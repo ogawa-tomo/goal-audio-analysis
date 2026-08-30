@@ -5,6 +5,7 @@ celebration, but nothing here is football-specific.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
@@ -29,9 +30,33 @@ class ClipFeatures:
     voiced_fraction: float
     f1_median_hz: Optional[float] = None
     f2_median_hz: Optional[float] = None
+    human_marked_time_s: Optional[float] = None
+    peak_vs_mark_diff_s: Optional[float] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _load_human_mark(path: Path) -> Optional[float]:
+    """Load `human_marked_time_s` from `<path>`'s sidecar `.mark.json`, if any.
+
+    Produced by `scripts/mark_goal_moment.py`: an independent, human-perceived
+    timestamp for where the target event (e.g. the goal) actually is in the
+    clip, gathered by listening to the clip and pressing a key -- separate
+    from the RMS-based peak search here, so the two can be cross-checked. A
+    real crowd reaction to something else in the clip (a near-miss, a
+    through-ball) can score higher than the true event and isn't
+    distinguishable from audio features alone; a large mismatch between
+    `peak_time_s` and this mark is a sign that happened.
+    """
+    mark_path = path.with_suffix(".mark.json")
+    if not mark_path.exists():
+        return None
+    try:
+        data = json.loads(mark_path.read_text(encoding="utf-8"))
+        return float(data["human_marked_time_s"])
+    except (json.JSONDecodeError, KeyError, ValueError, OSError):
+        return None
 
 
 def _find_peak(
@@ -143,6 +168,11 @@ def analyze_clip(
     if with_formants:
         f1_median, f2_median = _formants(y_win, sr)
 
+    human_marked_time_s = _load_human_mark(path)
+    peak_vs_mark_diff_s = (
+        round(peak_time - human_marked_time_s, 3) if human_marked_time_s is not None else None
+    )
+
     return ClipFeatures(
         file=path.name,
         peak_time_s=round(peak_time, 2),
@@ -158,6 +188,8 @@ def analyze_clip(
         voiced_fraction=round(float(np.mean(~np.isnan(f0))), 3),
         f1_median_hz=f1_median,
         f2_median_hz=f2_median,
+        human_marked_time_s=human_marked_time_s,
+        peak_vs_mark_diff_s=peak_vs_mark_diff_s,
     )
 
 

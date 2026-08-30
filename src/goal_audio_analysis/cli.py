@@ -38,6 +38,16 @@ def cmd_analyze(args):
         ).to_dict()
         for p in args.clips
     ]
+    for r in results:
+        diff = r.get("peak_vs_mark_diff_s")
+        if diff is not None and abs(diff) > args.mark_threshold:
+            print(
+                f"WARNING: {r['file']}: peak_time_s ({r['peak_time_s']}) differs from the "
+                f"human mark ({r['human_marked_time_s']}) by {diff:+.2f}s (threshold "
+                f"{args.mark_threshold}s). The detected peak may not be the intended event -- "
+                f"inspect this clip (see scripts/mark_goal_moment.py).",
+                file=sys.stderr,
+            )
     text = json.dumps(results, indent=2, ensure_ascii=False)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
@@ -103,6 +113,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="moving-average width (seconds) applied to the RMS envelope before peak-searching "
              "(default 0.3). Prevents a brief single-frame click (e.g. a recording glitch) from "
              "outscoring a genuine multi-second crowd swell. Set to 0 to disable",
+    )
+    p.add_argument(
+        "--mark-threshold", type=float, default=2.0, dest="mark_threshold",
+        help="if a clip has a human mark (see scripts/mark_goal_moment.py) and it differs from "
+             "the detected peak_time_s by more than this many seconds (default 2.0), print a "
+             "warning -- the detected peak may be the wrong event",
     )
     p.set_defaults(func=cmd_analyze)
 
