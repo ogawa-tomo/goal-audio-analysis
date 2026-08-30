@@ -34,6 +34,7 @@ def cmd_analyze(args):
     results = [
         features.analyze_clip(
             p, with_formants=not args.no_formants, peak_search_window_s=args.peak_search_window,
+            smooth_window_s=args.smooth_window,
         ).to_dict()
         for p in args.clips
     ]
@@ -96,6 +97,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="only search the first N seconds of the clip for the RMS peak (default 6.0). "
              "Should match extract-clip's --lead so the search window's far end stays "
              "`center + (search_window - lead)` seconds after the goal timestamp -- see README",
+    )
+    p.add_argument(
+        "--smooth-window", type=float, default=0.3, dest="smooth_window",
+        help="moving-average width (seconds) applied to the RMS envelope before peak-searching "
+             "(default 0.3). Prevents a brief single-frame click (e.g. a recording glitch) from "
+             "outscoring a genuine multi-second crowd swell. Set to 0 to disable",
     )
     p.set_defaults(func=cmd_analyze)
 

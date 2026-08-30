@@ -34,16 +34,39 @@ class ClipFeatures:
         return asdict(self)
 
 
-def _find_peak(rms: np.ndarray, times: np.ndarray, peak_search_window_s: float) -> tuple[int, float, float]:
+def _find_peak(
+    rms: np.ndarray, times: np.ndarray, peak_search_window_s: float, smooth_window_s: float = 0.3
+) -> tuple[int, float, float]:
     """Locate the RMS peak within the first `peak_search_window_s` seconds.
 
     Restricting the search window matters: in real broadcast clips a loud
     stadium PA announcement / goal siren / jingle can occur a few seconds
     *after* the crowd's own vocal reaction and would otherwise be picked up
     as the "peak" instead of the actual cheer.
+
+    The RMS envelope is smoothed with a `smooth_window_s`-wide moving
+    average before searching for the peak *location* -- this matters
+    because a brief single-frame click (e.g. a dropped/duplicated buffer
+    during loopback recording) can otherwise register as a louder
+    instantaneous peak than a genuine multi-second crowd swell. Smoothing
+    dilutes an isolated click's contribution while barely affecting a
+    sustained rise. The returned `peak_rms` is still read from the
+    *unsmoothed* signal at that location, so attack/decay thresholds are
+    computed against real amplitudes, not smoothed ones.
     """
+    if len(times) > 1 and smooth_window_s > 0:
+        frame_dt = float(times[1] - times[0])
+        smooth_frames = max(1, int(round(smooth_window_s / frame_dt)))
+    else:
+        smooth_frames = 1
+    if smooth_frames > 1:
+        kernel = np.ones(smooth_frames) / smooth_frames
+        rms_smooth = np.convolve(rms, kernel, mode="same")
+    else:
+        rms_smooth = rms
+
     mask = times <= peak_search_window_s
-    masked_rms = np.where(mask, rms, -np.inf)
+    masked_rms = np.where(mask, rms_smooth, -np.inf)
     peak_idx = int(np.argmax(masked_rms))
     return peak_idx, float(times[peak_idx]), float(rms[peak_idx])
 
@@ -67,6 +90,7 @@ def analyze_clip(
     path: str | Path,
     sr: int = 22050,
     peak_search_window_s: float = 6.0,
+    smooth_window_s: float = 0.3,
     spectral_window_pre_s: float = 0.5,
     spectral_window_post_s: float = 2.5,
     with_formants: bool = True,
@@ -95,7 +119,7 @@ def analyze_clip(
     rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
     times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=512)
 
-    peak_idx, peak_time, peak_rms = _find_peak(rms, times, peak_search_window_s)
+    peak_idx, peak_time, peak_rms = _find_peak(rms, times, peak_search_window_s, smooth_window_s)
     attack_time, decay_time = _attack_decay(rms, times, peak_idx, peak_rms)
 
     win_start = max(0.0, peak_time - spectral_window_pre_s)

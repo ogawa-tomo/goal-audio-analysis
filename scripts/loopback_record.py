@@ -75,6 +75,7 @@ import argparse
 import platform
 import sys
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -82,7 +83,19 @@ import soundcard as sc
 import soundfile as sf
 
 
-def record_loopback(out_path: str | Path, duration_s: float, samplerate: int = 48000) -> Path:
+def record_loopback(out_path: str | Path, duration_s: float, samplerate: int = 48000) -> tuple[Path, int]:
+    """Record `duration_s` seconds of loopback audio to `out_path`.
+
+    Returns `(out_path, discontinuity_count)`. `discontinuity_count` is how
+    many times `soundcard` raised its "data discontinuity in recording"
+    warning during capture (a dropped/duplicated audio buffer, typically a
+    WASAPI hiccup) -- a nonzero count means the recording may contain a
+    brief click or glitch and is worth inspecting (or re-recording) before
+    trusting it for analysis. Note that `analyze`'s peak search already
+    smooths the RMS envelope specifically to avoid such single-frame clicks
+    being mistaken for a genuine crowd swell, but a discontinuity elsewhere
+    in the file could still be worth a second look.
+    """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -90,17 +103,20 @@ def record_loopback(out_path: str | Path, duration_s: float, samplerate: int = 4
     mic = sc.get_microphone(id=str(speaker.name), include_loopback=True)
 
     frames = []
-    with mic.recorder(samplerate=samplerate) as recorder:
-        n_chunks = int(duration_s * samplerate / 1024) + 1
-        for _ in range(n_chunks):
-            frames.append(recorder.record(numframes=1024))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with mic.recorder(samplerate=samplerate) as recorder:
+            n_chunks = int(duration_s * samplerate / 1024) + 1
+            for _ in range(n_chunks):
+                frames.append(recorder.record(numframes=1024))
+        discontinuity_count = sum(1 for w in caught if "discontinuity" in str(w.message))
 
     audio = np.concatenate(frames, axis=0)
     n_samples = int(duration_s * samplerate)
     audio = audio[:n_samples]
 
     sf.write(str(out_path), audio, samplerate)
-    return out_path
+    return out_path, discontinuity_count
 
 
 def main(argv=None):
@@ -135,8 +151,15 @@ def main(argv=None):
         time.sleep(1)
 
     print(f"Recording for {args.duration:.1f}s -> {args.out}")
-    out = record_loopback(args.out, args.duration, args.samplerate)
+    out, discontinuity_count = record_loopback(args.out, args.duration, args.samplerate)
     print(f"saved: {out}")
+    if discontinuity_count:
+        print(
+            f"WARNING: {discontinuity_count} recording discontinuity(ies) detected during capture. "
+            f"This clip may contain a brief click/glitch -- inspect it (e.g. a spectrogram) or "
+            f"consider re-recording before trusting the analysis.",
+            file=sys.stderr,
+        )
     return 0
 
 
