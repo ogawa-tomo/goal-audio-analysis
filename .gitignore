@@ -1,0 +1,12 @@
+# audio data is intentionally not persisted in git
+data/raw/*
+data/clips/*
+!data/raw/.gitkeep
+!data/clips/.gitkeep
+
+__pycache__/
+*.pyc
+*.egg-info/
+venv/
+.venv/
+.python-version

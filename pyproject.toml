@@ -1,0 +1,24 @@
+[project]
+name = "goal-audio-analysis"
+version = "0.1.0"
+description = "Acoustic feature extraction and two-group comparison for crowd-noise recordings (e.g. football goal celebrations)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "librosa",
+    "soundfile",
+    "matplotlib",
+    "praat-parselmouth",
+    "yt-dlp",
+]
+
+[project.scripts]
+goal-audio = "goal_audio_analysis.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
