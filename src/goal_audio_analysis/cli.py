@@ -115,9 +115,9 @@ def build_parser() -> argparse.ArgumentParser:
              "outscoring a genuine multi-second crowd swell. Set to 0 to disable",
     )
     p.add_argument(
-        "--mark-threshold", type=float, default=2.0, dest="mark_threshold",
+        "--mark-threshold", type=float, default=1.2, dest="mark_threshold",
         help="if a clip has a human mark (see scripts/mark_goal_moment.py) and it differs from "
-             "the detected peak_time_s by more than this many seconds (default 2.0), print a "
+             "the detected peak_time_s by more than this many seconds (default 1.2), print a "
              "warning -- the detected peak may be the wrong event",
     )
     p.set_defaults(func=cmd_analyze)
