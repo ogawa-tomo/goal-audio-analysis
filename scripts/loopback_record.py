@@ -12,6 +12,16 @@ goal_audio_analysisライブラリ/CLIには含めていない(READMEの通り�
 解析とは別の関心事として切り離している)。WSLではなく、Windowsネイティブの
 Pythonで実行すること。
 
+セットアップ(初回のみ、Windows側のコマンドプロンプト/PowerShellで実行):
+    1. Windows用のPython(3.9以降を想定。WSL内のPythonではない)がインストール済みか
+       確認する。未インストールなら python.org からインストールする
+       > python --version
+    2. このスクリプトが依存するパッケージをインストールする(scripts/requirements.txt
+       に一覧がある: soundcard, soundfile, numpy)
+       > pip install -r scripts/requirements.txt
+    3. 動作確認(3秒だけ試し録りしてみる)
+       > python scripts/loopback_record.py test.wav --duration 3
+
 使い方:
     python scripts/loopback_record.py OUT.wav --duration 20 --countdown 3
 
@@ -30,7 +40,7 @@ Pythonで実行すること。
       比較対象となる録音全体で同じ音量のまま統一すること(結果を比較可能に保つため)
     - 録音時間中に音を鳴らしたり通知を出したりする可能性のある他のアプリは閉じておく
 
-必要なパッケージ: pip install soundcard
+必要なパッケージ: pip install -r scripts/requirements.txt (詳細は上記セットアップ参照)
 """
 from __future__ import annotations
 
