@@ -1,4 +1,4 @@
-"""システムの音声出力をWAVファイルにループバック録音する。
+r"""システムの音声出力をWAVファイルにループバック録音する。
 
 **Windows専用。** このスクリプトはWASAPIループバック(`soundcard`ライブラリ経由)を
 利用しており、これは追加のセットアップなしに「聞こえている音」を録音できる
@@ -12,18 +12,34 @@ goal_audio_analysisライブラリ/CLIには含めていない(READMEの通り�
 解析とは別の関心事として切り離している)。WSLではなく、Windowsネイティブの
 Pythonで実行すること。
 
-セットアップ(初回のみ、Windows側のコマンドプロンプト/PowerShellで実行):
+セットアップ(初回のみ、Windows側のPowerShellで実行。仮想環境(venv)を使う前提の手順。
+他のPython環境と依存関係が衝突しないようにするため):
+    0. (このリポジトリをWSL側(\\wsl.localhost\...)に置いている場合の注意)
+       venv(正確にはpipのブートストラップ)はUNCパス上ではうまく動かないことを確認して
+       いる。そのため**venv自体はWindowsのローカルディスク上に作ること**。スクリプトの
+       実行や、requirements.txtの参照はWSL側のパスのままで問題ない(パッケージの
+       インストール元・実行対象がUNCパスというだけなら問題なく動く)
     1. Windows用のPython(3.9以降を想定。WSL内のPythonではない)がインストール済みか
        確認する。未インストールなら python.org からインストールする
        > python --version
-    2. このスクリプトが依存するパッケージをインストールする(scripts/requirements.txt
-       に一覧がある: soundcard, soundfile, numpy)
-       > pip install -r scripts/requirements.txt
-    3. 動作確認(3秒だけ試し録りしてみる)
-       > python scripts/loopback_record.py test.wav --duration 3
+    2. このスクリプト専用の仮想環境を、Windowsのローカルディスク上(例: ユーザー
+       フォルダ直下)に作成する。パス・フォルダ名は任意
+       > python -m venv $env:USERPROFILE\.venv-goal-audio-loopback
+    3. 仮想環境を有効化する(PowerShellのセッションを開くたび毎回必要。変数から組み立てた
+       パスをスクリプトとして実行するので、先頭に呼び出し演算子`&`が必要)
+       > & "$env:USERPROFILE\.venv-goal-audio-loopback\Scripts\Activate.ps1"
+    4. 依存パッケージをインストールする(scripts/requirements.txt に一覧がある:
+       soundcard, soundfile, numpy)。この時点でプロンプトの先頭に
+       (.venv-goal-audio-loopback) と表示されていることを確認しておくこと
+       (仮想環境が有効化されている印)。<リポジトリのパス>は実際の場所に置き換える
+       (WSL側に置いている場合は \\wsl.localhost\<ディストリ名>\home\<ユーザー名>\goal-audio-analysis 等)
+       > pip install -r <リポジトリのパス>\scripts\requirements.txt
+    5. 動作確認(3秒だけ試し録りしてみる。出力先はカレントディレクトリのtest.wav)
+       > python <リポジトリのパス>\scripts\loopback_record.py test.wav --duration 3
 
-使い方:
-    python scripts/loopback_record.py OUT.wav --duration 20 --countdown 3
+使い方(2回目以降は、まず仮想環境を有効化してから実行する):
+    & "$env:USERPROFILE\.venv-goal-audio-loopback\Scripts\Activate.ps1"
+    python <リポジトリのパス>\scripts\loopback_record.py OUT.wav --duration 20 --countdown 3
 
 典型的な使い方の流れ:
     1. ブラウザで元動画を開き、切り出したい瞬間(例: ゴールの数秒前)の直前で一時停止する
@@ -40,7 +56,7 @@ Pythonで実行すること。
       比較対象となる録音全体で同じ音量のまま統一すること(結果を比較可能に保つため)
     - 録音時間中に音を鳴らしたり通知を出したりする可能性のある他のアプリは閉じておく
 
-必要なパッケージ: pip install -r scripts/requirements.txt (詳細は上記セットアップ参照)
+必要なパッケージ: venv上で pip install -r scripts/requirements.txt (詳細は上記セットアップ参照)
 """
 from __future__ import annotations
 
