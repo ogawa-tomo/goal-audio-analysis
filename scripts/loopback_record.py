@@ -45,14 +45,19 @@ Pythonで実行すること。
 使い方(2回目以降は、まず`$venvPython`変数を再定義してから実行する。PowerShellの
 セッションをまたぐと変数は消えるため):
     $venvPython = "$env:USERPROFILE\.venv-goal-audio-loopback\Scripts\python.exe"
-    & $venvPython <リポジトリのパス>\scripts\loopback_record.py "<絶対パスでの出力先>\OUT.wav" --duration 20 --countdown 3
+    & $venvPython <リポジトリのパス>\scripts\loopback_record.py "<絶対パスでの出力先>\OUT.wav" --duration 14 --countdown 3
 
 典型的な使い方の流れ:
-    1. ブラウザで元動画を開き、切り出したい瞬間(例: ゴールの数秒前)の直前で一時停止する
-    2. 適切な--duration/--countdownを指定してこのスクリプトを実行する
+    1. ブラウザで元動画を開き、捉えたい瞬間(例: ゴール)の**5秒前**で一時停止する
+       (ちょうど`--lead`相当の秒数ぴったりにすると、再生ボタンを押すタイミングが
+       前後にズレたときに耐性がなくなる。カウントダウン中はブラウザに切り替えて
+       手元のカウントダウンが見えなくなるため、早く/遅く押す両方向のズレが起こりうる
+       ことに注意)
+    2. `--duration 14`を指定してこのスクリプトを実行する(録音14秒、うち先頭8秒を
+       ピーク探索に使う想定。詳しい根拠はREADMEの「音声データの用意について」参照)
     3. カウントダウン中にブラウザに切り替え、録音開始と同時に再生が始まるよう再生ボタンを押す
-    4. できあがったWAVファイルはそのまま`goal-audio extract-clip` / `goal-audio analyze`
-       に渡せる
+    4. できあがったWAVファイルは、そのまま`goal-audio analyze --peak-search-window 8`に
+       渡せる(すでに短く切り出し済みなので`extract-clip`は不要)
 
 録音前に:
     - OS/ドライバの音声エフェクト(ラウドネス補正、空間/サラウンド仮想化など)をすべて
