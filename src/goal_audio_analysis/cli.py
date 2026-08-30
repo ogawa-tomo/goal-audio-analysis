@@ -31,7 +31,12 @@ def cmd_extract_clip(args):
 
 
 def cmd_analyze(args):
-    results = [features.analyze_clip(p, with_formants=not args.no_formants).to_dict() for p in args.clips]
+    results = [
+        features.analyze_clip(
+            p, with_formants=not args.no_formants, peak_search_window_s=args.peak_search_window,
+        ).to_dict()
+        for p in args.clips
+    ]
     text = json.dumps(results, indent=2, ensure_ascii=False)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
@@ -70,14 +75,28 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("src")
     p.add_argument("out")
     p.add_argument("center", type=float, help="timestamp (seconds) to center the clip on")
-    p.add_argument("--lead", type=float, default=1.0, help="seconds before `center` to start the clip")
-    p.add_argument("--duration", type=float, default=7.0)
+    p.add_argument(
+        "--lead", type=float, default=3.0,
+        help="seconds before `center` to start the clip (default 3.0; pair with "
+             "analyze's --peak-search-window so that lead + search-window's "
+             "post-`center` reach stays consistent -- see README)",
+    )
+    p.add_argument(
+        "--duration", type=float, default=9.0,
+        help="total clip length in seconds (default 9.0)",
+    )
     p.set_defaults(func=cmd_extract_clip)
 
     p = sub.add_parser("analyze", help="extract acoustic features from one or more clips")
     p.add_argument("clips", nargs="+")
     p.add_argument("-o", "--out", help="write JSON here instead of stdout")
     p.add_argument("--no-formants", action="store_true", help="skip formant (F1/F2) analysis")
+    p.add_argument(
+        "--peak-search-window", type=float, default=6.0, dest="peak_search_window",
+        help="only search the first N seconds of the clip for the RMS peak (default 6.0). "
+             "Should match extract-clip's --lead so the search window's far end stays "
+             "`center + (search_window - lead)` seconds after the goal timestamp -- see README",
+    )
     p.set_defaults(func=cmd_analyze)
 
     p = sub.add_parser("compare", help="compare two groups of pre-computed features")

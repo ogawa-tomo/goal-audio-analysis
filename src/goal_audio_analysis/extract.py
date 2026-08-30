@@ -18,11 +18,20 @@ def extract_clip(
     src_wav: str | Path,
     out_wav: str | Path,
     center_s: float,
-    lead_s: float = 1.0,
-    duration_s: float = 7.0,
+    lead_s: float = 3.0,
+    duration_s: float = 9.0,
 ) -> Path:
     """Cut a `duration_s`-long clip from `src_wav`, starting `lead_s` seconds
     before `center_s` (e.g. before a goal timestamp).
+
+    Defaults (lead_s=3.0, duration_s=9.0) are paired with
+    `features.analyze_clip`'s default `peak_search_window_s=6.0`: the peak
+    search then covers [center_s - 3, center_s + 3], a symmetric +/-3s
+    tolerance for an imprecise timestamp, while the boundary that matters
+    for avoiding a later false peak (center_s + 3, e.g. a stadium PA/jingle)
+    stays exactly where it was with the original lead_s=1.0/duration_s=7.0/
+    peak_search_window_s=4.0 defaults. Only the margin *before* the
+    timestamp was widened.
     """
     src_wav = Path(src_wav)
     out_wav = Path(out_wav)

@@ -66,7 +66,7 @@ def _attack_decay(rms: np.ndarray, times: np.ndarray, peak_idx: int, peak_rms: f
 def analyze_clip(
     path: str | Path,
     sr: int = 22050,
-    peak_search_window_s: float = 4.0,
+    peak_search_window_s: float = 6.0,
     spectral_window_pre_s: float = 0.5,
     spectral_window_post_s: float = 2.5,
     with_formants: bool = True,
@@ -77,6 +77,17 @@ def analyze_clip(
     of the clip. Spectral / pitch / formant features are then computed on a
     window centered on that peak (`spectral_window_pre_s` before it to
     `spectral_window_post_s` after it).
+
+    The default `peak_search_window_s=6.0` is meant to be paired with clips
+    cut via `extract.extract_clip`'s defaults (`lead_s=3.0`,
+    `duration_s=9.0`): together they give a symmetric +/-3s tolerance
+    around an imprecise goal timestamp, while keeping the search window's
+    *end* relative to the timestamp (timestamp + 3s) unchanged from the
+    original lead_s=1.0/duration_s=7.0/peak_search_window_s=4.0 combination.
+    That "timestamp + 3s" boundary is what matters for avoiding a later
+    false peak (e.g. a stadium PA/jingle after the cheer), so widening the
+    *pre*-timestamp margin alone does not increase that particular risk --
+    only extending the search window's far end would.
     """
     path = Path(path)
     y, _sr = librosa.load(path, sr=sr, mono=True)
