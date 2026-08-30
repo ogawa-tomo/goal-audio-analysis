@@ -10,7 +10,6 @@ dependencies = [
     "soundfile",
     "matplotlib",
     "praat-parselmouth",
-    "yt-dlp",
 ]
 
 [project.scripts]

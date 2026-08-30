@@ -1,9 +1,11 @@
 """Command-line interface.
 
-    goal-audio extract-audio <url> <out.wav>
     goal-audio extract-clip <src.wav> <out.wav> <center_seconds>
     goal-audio analyze <clip1.wav> [clip2.wav ...] -o features.json
     goal-audio compare <features_a.json> <features_b.json> --label-a Premier --label-b LaLiga -o results/
+
+How to acquire the source audio file itself (`src.wav` above) is out of
+scope for this CLI — see the README.
 """
 from __future__ import annotations
 
@@ -21,11 +23,6 @@ DEFAULT_BAR_METRICS = [
     ("spectral_bandwidth_hz", "Bandwidth (Hz)"),
     ("f0_median_hz", "F0 median (Hz)"),
 ]
-
-
-def cmd_extract_audio(args):
-    out = extract.download_audio(args.url, args.out)
-    print(f"saved: {out}")
 
 
 def cmd_extract_clip(args):
@@ -68,11 +65,6 @@ def cmd_compare(args):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="goal-audio")
     sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("extract-audio", help="download a video's audio track")
-    p.add_argument("url")
-    p.add_argument("out")
-    p.set_defaults(func=cmd_extract_audio)
 
     p = sub.add_parser("extract-clip", help="cut a short clip from a source wav")
     p.add_argument("src")

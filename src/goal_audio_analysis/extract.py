@@ -1,38 +1,17 @@
-"""Audio acquisition: download a source video's audio and cut short clips from it.
+"""Clip extraction: cut a short window out of a local audio file.
 
-Depends on the external `yt-dlp` and `ffmpeg` executables being on PATH.
+How the source audio file itself is acquired is out of scope here — see the
+README for guidance (e.g. loopback-recording playback rather than
+downloading, when the source is a service like YouTube whose terms of
+service prohibit unauthorized downloads).
+
+Depends on the external `ffmpeg` executable being on PATH.
 """
 from __future__ import annotations
 
 import shutil
 import subprocess
 from pathlib import Path
-
-
-def download_audio(url: str, out_path: str | Path, audio_format: str = "wav") -> Path:
-    """Download only the audio track of `url` and save it as `out_path`.
-
-    `out_path`'s extension is ignored; the final file will have the
-    `audio_format` extension (default wav).
-    """
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    stem = out_path.with_suffix("")
-
-    subprocess.run(
-        [
-            "yt-dlp",
-            "-x",
-            "--audio-format", audio_format,
-            "-o", f"{stem}.%(ext)s",
-            url,
-        ],
-        check=True,
-    )
-    result = stem.with_suffix(f".{audio_format}")
-    if not result.exists():
-        raise FileNotFoundError(f"expected download output not found: {result}")
-    return result
 
 
 def extract_clip(
@@ -64,7 +43,6 @@ def extract_clip(
 
 
 def check_tools_available() -> None:
-    """Raise RuntimeError if yt-dlp or ffmpeg are not on PATH."""
-    missing = [tool for tool in ("yt-dlp", "ffmpeg") if shutil.which(tool) is None]
-    if missing:
-        raise RuntimeError(f"required tool(s) not found on PATH: {', '.join(missing)}")
+    """Raise RuntimeError if ffmpeg is not on PATH."""
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("required tool not found on PATH: ffmpeg")
