@@ -34,11 +34,13 @@ pip install -e .
     ノイズ抑制を無効化し、システム音量を固定しておくこと。これらが有効だとスペクトル特徴量
     (重心・ロールオフ等)やRMSエンベロープ(立ち上がり時間・ピーク検出)が歪む可能性がある
   - 録音・保存部分だけを自動化する補助スクリプトを [`scripts/loopback_record.py`](scripts/loopback_record.py)
-    に用意している(**WSLではなくWindows側のPythonで実行すること**。WASAPIループバックは
-    OSのオーディオミキサーに直接アクセスするため、WSL内からは扱えない)。ブラウザでの
-    再生開始タイミングだけは手動で合わせる想定(完全自動化はしていない)。使い方は
-    スクリプト冒頭のdocstringを参照。事前に `pip install -r scripts/requirements.txt`
-    (Windows側のPython環境に)が必要
+    に用意している。**現時点ではWindows専用**(WASAPIループバックを利用しており、
+    WSL内からはOSのオーディオミキサーに直接アクセスできないため実行不可。macOSも
+    CoreAudioにはWASAPI相当のループバック機構がなく、`BlackHole`等の仮想オーディオ
+    デバイスの追加セットアップとスクリプト側の対応が別途必要なため、現状未対応)。
+    実行はWSLではなくWindows側のPythonで行うこと。ブラウザでの再生開始タイミングだけは
+    手動で合わせる想定(完全自動化はしていない)。使い方はスクリプト冒頭のdocstringを参照。
+    事前に `pip install -r scripts/requirements.txt`(Windows側のPython環境に)が必要
 - **WOWOW・U-NEXT等の有料配信サービスが原音源の場合**: 利用規約でストリーミングの録画・
   録音自体を明確に禁止していることが多く、YouTubeより制約が厳しい。BS放送等、テレビ放送を
   対応レコーダーで録画したもの(コピーワンス等の正規のコピー制御下にある録画)であれば、

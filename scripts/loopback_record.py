@@ -1,10 +1,17 @@
-"""Loopback-record the system's audio output to a WAV file (Windows).
+"""Loopback-record the system's audio output to a WAV file.
+
+**Windows-only.** This script relies on WASAPI loopback (via the
+`soundcard` library), which is a Windows/WASAPI-specific mechanism for
+capturing "what you hear" without extra setup. It does **not** work on
+macOS (CoreAudio has no built-in loopback route -- capturing system audio
+there requires installing a virtual audio driver such as BlackHole and
+routing output through it, which this script does not currently support)
+or inside WSL (no path to the Windows OS audio mixer from there).
 
 This is a data-preparation helper, deliberately kept OUT of the
 goal_audio_analysis library/CLI (see README: audio acquisition is a
-separate concern from analysis). It must be run with a native Windows
-Python (not WSL) since it needs WASAPI loopback access to the OS audio
-mixer -- WSL has no route to that.
+separate concern from analysis). Run it with a native Windows Python
+(not WSL).
 
 Usage:
     python scripts/loopback_record.py OUT.wav --duration 20 --countdown 3
@@ -34,6 +41,7 @@ Requires: pip install soundcard
 from __future__ import annotations
 
 import argparse
+import platform
 import sys
 import time
 from pathlib import Path
@@ -65,6 +73,15 @@ def record_loopback(out_path: str | Path, duration_s: float, samplerate: int = 4
 
 
 def main(argv=None):
+    if platform.system() != "Windows":
+        print(
+            f"error: this script only supports Windows (WASAPI loopback). "
+            f"Detected platform: {platform.system()}. See the module docstring "
+            f"for why macOS/WSL aren't supported yet.",
+            file=sys.stderr,
+        )
+        return 1
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("out", help="output WAV path")
     parser.add_argument("--duration", type=float, required=True, help="how many seconds to record")
@@ -80,6 +97,7 @@ def main(argv=None):
     print(f"Recording for {args.duration:.1f}s -> {args.out}")
     out = record_loopback(args.out, args.duration, args.samplerate)
     print(f"saved: {out}")
+    return 0
 
 
 if __name__ == "__main__":
