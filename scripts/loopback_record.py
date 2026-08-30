@@ -25,21 +25,27 @@ Pythonで実行すること。
     2. このスクリプト専用の仮想環境を、Windowsのローカルディスク上(例: ユーザー
        フォルダ直下)に作成する。パス・フォルダ名は任意
        > python -m venv $env:USERPROFILE\.venv-goal-audio-loopback
-    3. 仮想環境を有効化する(PowerShellのセッションを開くたび毎回必要。変数から組み立てた
-       パスをスクリプトとして実行するので、先頭に呼び出し演算子`&`が必要)
-       > & "$env:USERPROFILE\.venv-goal-audio-loopback\Scripts\Activate.ps1"
+    3. 仮想環境内のpython.exeを指す変数を用意する(PowerShellのセッションを開くたび
+       毎回必要)。**`Activate.ps1`による有効化は使わない** -- 既定の実行ポリシーだと
+       "スクリプトの実行が無効になっている"というエラー(PSSecurityException)で
+       弾かれる環境が多いため。venv内のpython.exeをフルパスで直接呼べば、有効化
+       (=PowerShellスクリプトの実行)自体が不要になりこの問題を回避できる
+       > $venvPython = "$env:USERPROFILE\.venv-goal-audio-loopback\Scripts\python.exe"
     4. 依存パッケージをインストールする(scripts/requirements.txt に一覧がある:
-       soundcard, soundfile, numpy)。この時点でプロンプトの先頭に
-       (.venv-goal-audio-loopback) と表示されていることを確認しておくこと
-       (仮想環境が有効化されている印)。<リポジトリのパス>は実際の場所に置き換える
+       soundcard, soundfile, numpy)。<リポジトリのパス>は実際の場所に置き換える
        (WSL側に置いている場合は \\wsl.localhost\<ディストリ名>\home\<ユーザー名>\goal-audio-analysis 等)
-       > pip install -r <リポジトリのパス>\scripts\requirements.txt
-    5. 動作確認(3秒だけ試し録りしてみる。出力先はカレントディレクトリのtest.wav)
-       > python <リポジトリのパス>\scripts\loopback_record.py test.wav --duration 3
+       > & $venvPython -m pip install -r <リポジトリのパス>\scripts\requirements.txt
+    5. 動作確認(3秒だけ試し録りしてみる)。**出力先は必ず絶対パスで指定する** --
+       相対パスのままだと、実行時のカレントディレクトリが書き込み権限のない場所
+       (例: PowerShellを開いた直後の既定ディレクトリが `C:\WINDOWS\System32` に
+       なっているケース)だと `soundfile.LibsndfileError: ... System error.` で
+       失敗することがある
+       > & $venvPython <リポジトリのパス>\scripts\loopback_record.py "$env:USERPROFILE\test.wav" --duration 3
 
-使い方(2回目以降は、まず仮想環境を有効化してから実行する):
-    & "$env:USERPROFILE\.venv-goal-audio-loopback\Scripts\Activate.ps1"
-    python <リポジトリのパス>\scripts\loopback_record.py OUT.wav --duration 20 --countdown 3
+使い方(2回目以降は、まず`$venvPython`変数を再定義してから実行する。PowerShellの
+セッションをまたぐと変数は消えるため):
+    $venvPython = "$env:USERPROFILE\.venv-goal-audio-loopback\Scripts\python.exe"
+    & $venvPython <リポジトリのパス>\scripts\loopback_record.py "<絶対パスでの出力先>\OUT.wav" --duration 20 --countdown 3
 
 典型的な使い方の流れ:
     1. ブラウザで元動画を開き、切り出したい瞬間(例: ゴールの数秒前)の直前で一時停止する
