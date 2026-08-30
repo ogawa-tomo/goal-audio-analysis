@@ -1,42 +1,36 @@
-"""Loopback-record the system's audio output to a WAV file.
+"""システムの音声出力をWAVファイルにループバック録音する。
 
-**Windows-only.** This script relies on WASAPI loopback (via the
-`soundcard` library), which is a Windows/WASAPI-specific mechanism for
-capturing "what you hear" without extra setup. It does **not** work on
-macOS (CoreAudio has no built-in loopback route -- capturing system audio
-there requires installing a virtual audio driver such as BlackHole and
-routing output through it, which this script does not currently support)
-or inside WSL (no path to the Windows OS audio mixer from there).
+**Windows専用。** このスクリプトはWASAPIループバック(`soundcard`ライブラリ経由)を
+利用しており、これは追加のセットアップなしに「聞こえている音」を録音できる
+Windows/WASAPI固有の仕組み。**macOSでは動作しない**(CoreAudioには標準のループバック
+機構がなく、システム音声を録音するには`BlackHole`等の仮想オーディオデバイスの導入と
+そこへの出力ルーティングが必要で、このスクリプトは現時点でそれに対応していない)。
+WSL内でも動作しない(WSLからはWindowsのOSオーディオミキサーにアクセスする経路がない)。
 
-This is a data-preparation helper, deliberately kept OUT of the
-goal_audio_analysis library/CLI (see README: audio acquisition is a
-separate concern from analysis). Run it with a native Windows Python
-(not WSL).
+これは音声データを準備するための補助スクリプトであり、意図的に
+goal_audio_analysisライブラリ/CLIには含めていない(READMEの通り、音声データの取得は
+解析とは別の関心事として切り離している)。WSLではなく、Windowsネイティブの
+Pythonで実行すること。
 
-Usage:
+使い方:
     python scripts/loopback_record.py OUT.wav --duration 20 --countdown 3
 
-Typical workflow:
-    1. Open the source video in your browser and pause it at the point
-       just before the moment you want to capture (e.g. a few seconds
-       before a goal).
-    2. Run this script with an appropriate --duration and --countdown.
-    3. During the countdown, switch to the browser and hit play so that
-       playback starts right as recording begins.
-    4. The resulting WAV can be fed straight into
-       `goal-audio extract-clip` / `goal-audio analyze`.
+典型的な使い方の流れ:
+    1. ブラウザで元動画を開き、切り出したい瞬間(例: ゴールの数秒前)の直前で一時停止する
+    2. 適切な--duration/--countdownを指定してこのスクリプトを実行する
+    3. カウントダウン中にブラウザに切り替え、録音開始と同時に再生が始まるよう再生ボタンを押す
+    4. できあがったWAVファイルはそのまま`goal-audio extract-clip` / `goal-audio analyze`
+       に渡せる
 
-Before recording:
-    - Turn OFF any OS/driver audio enhancements (loudness equalization,
-      spatial/surround virtualization, etc.) -- Sound settings > your
-      output device > Properties > Enhancements/Spatial sound > disable.
-    - Set the system volume to a fixed, known level (100% recommended,
-      as long as nothing clips) and leave it there for all recordings
-      in a comparison, so results stay comparable across clips.
-    - Close other apps that might play sound or trigger notifications
-      during the recording window.
+録音前に:
+    - OS/ドライバの音声エフェクト(ラウドネス補正、空間/サラウンド仮想化など)をすべて
+      OFFにする -- サウンド設定 > 出力デバイス > プロパティ > 拡張機能/空間オーディオ
+      から無効化
+    - システム音量を固定の既知の値にする(クリッピングしない範囲で100%を推奨)。
+      比較対象となる録音全体で同じ音量のまま統一すること(結果を比較可能に保つため)
+    - 録音時間中に音を鳴らしたり通知を出したりする可能性のある他のアプリは閉じておく
 
-Requires: pip install soundcard
+必要なパッケージ: pip install soundcard
 """
 from __future__ import annotations
 
