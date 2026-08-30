@@ -77,10 +77,19 @@ def main(argv=None):
         return 1
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("out", help="output WAV path")
-    parser.add_argument("--duration", type=float, required=True, help="how many seconds to record")
-    parser.add_argument("--countdown", type=float, default=3.0, help="seconds to wait before recording starts")
-    parser.add_argument("--samplerate", type=int, default=48000)
+    parser.add_argument("out", help="出力WAVファイルのパス")
+    parser.add_argument(
+        "--duration", type=float, required=True,
+        help="録音する長さ(単位: 秒)。カウントダウン終了後、この秒数だけ録音する",
+    )
+    parser.add_argument(
+        "--countdown", type=float, default=3.0,
+        help="録音開始までの待機時間(単位: 秒、デフォルト3秒)。この間にブラウザに切り替えて再生を始める",
+    )
+    parser.add_argument(
+        "--samplerate", type=int, default=48000,
+        help="サンプリングレート(単位: Hz、デフォルト48000)",
+    )
     args = parser.parse_args(argv)
 
     print(f"Recording device: {sc.default_speaker().name}")
