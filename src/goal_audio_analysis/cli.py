@@ -35,6 +35,8 @@ def cmd_analyze(args):
         features.analyze_clip(
             p, with_formants=not args.no_formants, peak_search_window_s=args.peak_search_window,
             smooth_window_s=args.smooth_window,
+            candidate_height_ratio=args.peak_height_ratio,
+            candidate_min_separation_s=args.peak_min_separation,
         ).to_dict()
         for p in args.clips
     ]
@@ -48,6 +50,23 @@ def cmd_analyze(args):
                 f"inspect this clip (see scripts/mark_goal_moment.py).",
                 file=sys.stderr,
             )
+
+        candidates = r.get("candidate_peak_times_s") or []
+        if len(candidates) > 1:
+            if r.get("human_marked_time_s") is None:
+                print(
+                    f"NOTE: {r['file']}: {len(candidates)} candidate peaks found {candidates}s -- "
+                    f"listen at each timestamp (e.g. via a media player) and mark the correct "
+                    f"one with scripts/mark_goal_moment.py.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"NOTE: {r['file']}: {len(candidates)} candidate peaks found {candidates}s "
+                    f"(already marked at {r['human_marked_time_s']}s) -- if that mark wasn't "
+                    f"chosen from among these, double check it against them.",
+                    file=sys.stderr,
+                )
     text = json.dumps(results, indent=2, ensure_ascii=False)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
@@ -119,6 +138,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="if a clip has a human mark (see scripts/mark_goal_moment.py) and it differs from "
              "the detected peak_time_s by more than this many seconds (default 1.2), print a "
              "warning -- the detected peak may be the wrong event",
+    )
+    p.add_argument(
+        "--peak-height-ratio", type=float, default=0.8, dest="peak_height_ratio",
+        help="a local RMS maximum within the search window counts as a rival candidate peak "
+             "if its height is at least this fraction of the main peak's height (default 0.8)",
+    )
+    p.add_argument(
+        "--peak-min-separation", type=float, default=2.0, dest="peak_min_separation",
+        help="candidate peaks closer together than this many seconds are merged, keeping the "
+             "taller one (default 2.0) -- avoids treating texture within one crowd swell as "
+             "separate events",
     )
     p.set_defaults(func=cmd_analyze)
 

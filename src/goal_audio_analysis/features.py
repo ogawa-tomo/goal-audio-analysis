@@ -32,6 +32,7 @@ class ClipFeatures:
     f2_median_hz: Optional[float] = None
     human_marked_time_s: Optional[float] = None
     peak_vs_mark_diff_s: Optional[float] = None
+    candidate_peak_times_s: Optional[list[float]] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -61,7 +62,7 @@ def _load_human_mark(path: Path) -> Optional[float]:
 
 def _find_peak(
     rms: np.ndarray, times: np.ndarray, peak_search_window_s: float, smooth_window_s: float = 0.3
-) -> tuple[int, float, float]:
+) -> tuple[int, float, float, np.ndarray]:
     """Locate the RMS peak within the first `peak_search_window_s` seconds.
 
     Restricting the search window matters: in real broadcast clips a loud
@@ -93,7 +94,63 @@ def _find_peak(
     mask = times <= peak_search_window_s
     masked_rms = np.where(mask, rms_smooth, -np.inf)
     peak_idx = int(np.argmax(masked_rms))
-    return peak_idx, float(times[peak_idx]), float(rms[peak_idx])
+    return peak_idx, float(times[peak_idx]), float(rms[peak_idx]), rms_smooth
+
+
+def _find_candidate_peaks(
+    rms_smooth: np.ndarray,
+    times: np.ndarray,
+    peak_search_window_s: float,
+    peak_height: float,
+    height_ratio: float = 0.8,
+    min_separation_s: float = 0.5,
+) -> list[float]:
+    """Find local maxima within the search window that rival the main peak.
+
+    A clean goal reaction should have one dominant swell. An earlier crowd
+    reaction to a near-miss/developing chance can produce a second, almost
+    as loud, local maximum -- this is a sign `peak_time_s` might have locked
+    onto the wrong one (see Newcastle 2nd goal in this project's data). This
+    runs on the algorithm's own smoothed RMS envelope only, so unlike
+    `peak_vs_mark_diff_s` it doesn't need a human mark to be present.
+
+    `height_ratio` sets how close (as a fraction of the main peak's height)
+    another local max must be to count as a rival candidate; `min_separation_s`
+    merges local maxima that are really the same bump (keeping the taller one).
+    """
+    mask = times <= peak_search_window_s
+    idx = np.where(mask)[0]
+    if len(idx) < 3:
+        return [float(times[idx[0]])] if len(idx) else []
+
+    windowed = rms_smooth[idx]
+    windowed_times = times[idx]
+
+    is_local_max = np.zeros(len(windowed), dtype=bool)
+    is_local_max[1:-1] = (windowed[1:-1] > windowed[:-2]) & (windowed[1:-1] > windowed[2:])
+    # the global max within the window always counts, even if it sits at an edge
+    is_local_max[int(np.argmax(windowed))] = True
+
+    candidate_idx = np.where(is_local_max & (windowed >= height_ratio * peak_height))[0]
+    if len(candidate_idx) == 0:
+        return []
+
+    order = np.argsort(windowed_times[candidate_idx])
+    cand_times = windowed_times[candidate_idx][order]
+    cand_heights = windowed[candidate_idx][order]
+
+    kept_times: list[float] = []
+    kept_heights: list[float] = []
+    for t, h in zip(cand_times, cand_heights):
+        if kept_times and (t - kept_times[-1]) < min_separation_s:
+            if h > kept_heights[-1]:
+                kept_times[-1] = float(t)
+                kept_heights[-1] = float(h)
+            continue
+        kept_times.append(float(t))
+        kept_heights.append(float(h))
+
+    return [round(t, 2) for t in kept_times]
 
 
 def _attack_decay(rms: np.ndarray, times: np.ndarray, peak_idx: int, peak_rms: float) -> tuple[float, Optional[float]]:
@@ -119,6 +176,8 @@ def analyze_clip(
     spectral_window_pre_s: float = 0.5,
     spectral_window_post_s: float = 2.5,
     with_formants: bool = True,
+    candidate_height_ratio: float = 0.8,
+    candidate_min_separation_s: float = 0.5,
 ) -> ClipFeatures:
     """Extract acoustic features from one audio clip.
 
@@ -144,8 +203,12 @@ def analyze_clip(
     rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
     times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=512)
 
-    peak_idx, peak_time, peak_rms = _find_peak(rms, times, peak_search_window_s, smooth_window_s)
+    peak_idx, peak_time, peak_rms, rms_smooth = _find_peak(rms, times, peak_search_window_s, smooth_window_s)
     attack_time, decay_time = _attack_decay(rms, times, peak_idx, peak_rms)
+    candidate_peak_times_s = _find_candidate_peaks(
+        rms_smooth, times, peak_search_window_s, rms_smooth[peak_idx],
+        height_ratio=candidate_height_ratio, min_separation_s=candidate_min_separation_s,
+    )
 
     win_start = max(0.0, peak_time - spectral_window_pre_s)
     win_end = peak_time + spectral_window_post_s
@@ -190,6 +253,7 @@ def analyze_clip(
         f2_median_hz=f2_median,
         human_marked_time_s=human_marked_time_s,
         peak_vs_mark_diff_s=peak_vs_mark_diff_s,
+        candidate_peak_times_s=candidate_peak_times_s,
     )
 
 
