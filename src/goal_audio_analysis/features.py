@@ -211,7 +211,7 @@ def _attack_decay(rms: np.ndarray, times: np.ndarray, peak_idx: int, peak_rms: f
 def analyze_clip(
     path: str | Path,
     sr: int = 22050,
-    peak_search_window_s: float = 6.0,
+    peak_search_window_s: float = 8.0,
     smooth_window_s: float = 0.3,
     spectral_window_pre_s: float = 0.5,
     spectral_window_post_s: float = 2.5,
@@ -231,16 +231,24 @@ def analyze_clip(
     (`spectral_window_pre_s` before it to `spectral_window_post_s` after
     it).
 
-    The default `peak_search_window_s=6.0` is meant to be paired with clips
-    cut via `extract.extract_clip`'s defaults (`lead_s=3.0`,
-    `duration_s=9.0`): together they give a symmetric +/-3s tolerance
-    around an imprecise goal timestamp, while keeping the search window's
-    *end* relative to the timestamp (timestamp + 3s) unchanged from the
-    original lead_s=1.0/duration_s=7.0/peak_search_window_s=4.0 combination.
-    That "timestamp + 3s" boundary is what matters for avoiding a later
-    false peak (e.g. a stadium PA/jingle after the cheer), so widening the
-    *pre*-timestamp margin alone does not increase that particular risk --
-    only extending the search window's far end would.
+    The default `peak_search_window_s=8.0` matches this project's only
+    active data source: clips loopback-recorded by pausing playback ~5s
+    before the goal and recording for `--duration 14` (see README). The
+    clip's actual goal timestamp is imprecise (a human pauses playback by
+    eye), so the search window has to tolerate that imprecision without
+    reaching far enough to catch a later false peak (e.g. a stadium
+    PA/jingle after the cheer) -- 8.0 was chosen as `expected margin + 6s`
+    to cover the worst case where the true peak lands right at the search
+    window's edge.
+
+    If instead analyzing a clip cut via `extract.extract_clip`'s defaults
+    (`lead_s=3.0`, `duration_s=9.0` -- a workflow for cutting a clip out of
+    an existing local audio file, not for the loopback-recorded dataset),
+    pass `peak_search_window_s=6.0` to match: together they give a
+    symmetric +/-3s tolerance around an imprecise goal timestamp, keeping
+    the search window's *end* relative to the timestamp (timestamp + 3s)
+    fixed regardless of how the *pre*-timestamp margin is widened, since
+    that end boundary is what matters for avoiding a later false peak.
     """
     path = Path(path)
     y, _sr = librosa.load(path, sr=sr, mono=True)

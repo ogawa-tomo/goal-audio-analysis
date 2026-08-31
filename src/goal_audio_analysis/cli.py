@@ -111,10 +111,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--out", help="write JSON here instead of stdout")
     p.add_argument("--no-formants", action="store_true", help="skip formant (F1/F2) analysis")
     p.add_argument(
-        "--peak-search-window", type=float, default=6.0, dest="peak_search_window",
-        help="only search the first N seconds of the clip for the RMS peak (default 6.0). "
-             "Should match extract-clip's --lead so the search window's far end stays "
-             "`center + (search_window - lead)` seconds after the goal timestamp -- see README",
+        "--peak-search-window", type=float, default=8.0, dest="peak_search_window",
+        help="only search the first N seconds of the clip for the RMS peak (default 8.0, "
+             "matching the loopback-recording convention: pause 5s before, --duration 14 -- "
+             "see README). If instead analyzing a clip cut via extract-clip's --lead "
+             "3/--duration 9 defaults, pass 6.0 here to match",
     )
     p.add_argument(
         "--smooth-window", type=float, default=0.3, dest="smooth_window",

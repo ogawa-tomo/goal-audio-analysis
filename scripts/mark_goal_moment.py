@@ -8,16 +8,16 @@ r"""機械的に検出したゴール瞬間の候補から、正しいものを�
 特徴量計算(attack/decay時間・スペクトル特徴量など)の基準点として使う。
 
 **重要**: `--peak-search-window` は、実際に`goal-audio analyze`に渡す値と必ず一致させる
-こと。ループバック録音したクリップ(`data/clips/*_lb.wav`)は`8`を使うこと -- この既定値
-(6.0)は`extract-clip`の`--lead 3 --duration 9`との組み合わせ用で、ループバック録音の
-`--duration 14`とは合わない。窓が狭すぎると、本来検出されるべき候補が探索範囲外に
-切り捨てられ、見つからなくなる。
+こと。既定値(8.0)はループバック録音したクリップ(`data/clips/*_lb.wav`、`--duration 14`)
+用。`extract-clip`の`--lead 3 --duration 9`で切り出したクリップを扱う場合は`6`を指定する
+こと -- 窓が合っていないと、本来検出されるべき候補が探索範囲外に切り捨てられ、見つから
+なくなる(この既定値がまだ6.0だった頃、実際にこれで見落としを起こしている)。
 
 ## 使い方
 
-    python scripts/mark_goal_moment.py <clip.wav> --peak-search-window 8
+    python scripts/mark_goal_moment.py <clip.wav>
         候補一覧を表示するだけ(まだ選択しない)
-    python scripts/mark_goal_moment.py <clip.wav> --peak-search-window 8 --pick <番号>
+    python scripts/mark_goal_moment.py <clip.wav> --pick <番号>
         候補の中から正しいものを選び、選択結果を保存する
 
 ## 設計メモ
@@ -55,8 +55,8 @@ def main(argv=None):
     parser.add_argument("clip", help="対象のWAVファイルのパス")
     parser.add_argument("--pick", type=int, default=None, help="正しい候補の番号(1始まり)。省略すると候補一覧のみ表示する")
     parser.add_argument(
-        "--peak-search-window", type=float, default=6.0, dest="peak_search_window",
-        help="`goal-audio analyze`に渡すのと同じ値を指定すること(既定6.0)",
+        "--peak-search-window", type=float, default=8.0, dest="peak_search_window",
+        help="`goal-audio analyze`に渡すのと同じ値を指定すること(既定8.0、ループバック録音用)",
     )
     parser.add_argument("--peak-height-ratio", type=float, default=0.8, dest="peak_height_ratio")
     parser.add_argument("--peak-min-separation", type=float, default=2.0, dest="peak_min_separation")
