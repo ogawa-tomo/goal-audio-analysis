@@ -155,13 +155,17 @@ def _increase_spectrum(
     return centroid, rolloff85, bandwidth, flatness
 
 
-def _pre_goal_window(y: np.ndarray, sr: int, peak_time: float, pre_start_s: float, pre_end_s: float) -> Optional[np.ndarray]:
-    """Slice out the pre-goal baseline window used by `_increase_spectrum` and the zero_crossing_rate delta."""
-    pre_s = max(0.0, peak_time + pre_start_s)
-    pre_e = max(0.0, peak_time + pre_end_s)
-    if pre_e - pre_s < 0.1:
+def _relative_window(y: np.ndarray, sr: int, peak_time: float, start_s: float, end_s: float) -> Optional[np.ndarray]:
+    """Slice out `[peak_time + start_s, peak_time + end_s)`, clamped to not start before 0.
+
+    Used for the pre/post-goal baseline windows shared by `_increase_spectrum`
+    and the zero_crossing_rate before/after delta.
+    """
+    w_s = max(0.0, peak_time + start_s)
+    w_e = max(0.0, peak_time + end_s)
+    if w_e - w_s < 0.1:
         return None
-    return y[int(pre_s * sr):int(pre_e * sr)]
+    return y[int(w_s * sr):int(w_e * sr)]
 
 
 def analyze_clip(
@@ -169,8 +173,7 @@ def analyze_clip(
     sr: int = 22050,
     spectral_window_pre_s: float = 0.5,
     spectral_window_post_s: float = 2.5,
-    increase_pre_start_s: float = -3.0,
-    increase_pre_end_s: float = -0.5,
+    increase_window_s: float = 2.0,
     with_formants: bool = True,
 ) -> ClipFeatures:
     """Extract acoustic features from one audio clip.
@@ -181,14 +184,18 @@ def analyze_clip(
     `_load_human_mark` for why. Spectral / pitch / formant features are
     computed on a window centered on that marked moment
     (`spectral_window_pre_s` before it to `spectral_window_post_s` after
-    it). The `increase_*` fields instead describe what's *new* relative to
-    a pre-goal baseline window (`increase_pre_start_s` to
-    `increase_pre_end_s` before the marked moment) -- see
-    `_increase_spectrum`. `zero_crossing_rate_pre`/`_delta` apply the same
-    before/after comparison to zero-crossing rate, which (unlike the
-    spectral_* fields) is a single time-domain scalar rather than a
-    per-frequency-bin quantity, so it's compared as a plain before/after
-    delta instead of being recomputed on a difference spectrum.
+    it).
+
+    The `increase_*` and `zero_crossing_rate_pre`/`_delta` fields instead
+    compare a pre-goal baseline window against a post-goal window, split
+    symmetrically at the marked moment itself: `increase_window_s` before
+    it (the baseline) vs. `increase_window_s` after it (the reaction) --
+    see `_increase_spectrum`. This is a separate, independently-sized
+    window from `spectral_window_pre_s`/`_post_s` above, which exists only
+    to describe the post-goal sound on its own (and starts slightly before
+    the marked moment to capture the reaction's attack). `increase_*`
+    fields need a clean, non-overlapping before/after split instead, so
+    they don't share that window.
     """
     path = Path(path)
 
@@ -227,17 +234,18 @@ def analyze_clip(
     f0_voiced = f0[~np.isnan(f0)]
 
     zcr_post_val = float(np.mean(zcr))
-    y_pre = _pre_goal_window(y, sr, peak_time, increase_pre_start_s, increase_pre_end_s)
-    if y_pre is not None and len(y_pre) > 0:
+    y_pre = _relative_window(y, sr, peak_time, -increase_window_s, 0.0)
+    y_post_for_delta = _relative_window(y, sr, peak_time, 0.0, increase_window_s)
+    if y_pre is not None and len(y_pre) > 0 and y_post_for_delta is not None and len(y_post_for_delta) > 0:
         zcr_pre_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_pre)[0]))
-        zcr_delta_val = zcr_post_val - zcr_pre_val
+        zcr_delta_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_post_for_delta)[0])) - zcr_pre_val
     else:
         zcr_pre_val = zcr_delta_val = None
 
     increase = _increase_spectrum(
         y, sr, peak_time,
-        increase_pre_start_s, increase_pre_end_s,
-        -spectral_window_pre_s, spectral_window_post_s,
+        -increase_window_s, 0.0,
+        0.0, increase_window_s,
     )
     if increase is not None:
         inc_centroid, inc_rolloff85, inc_bandwidth, inc_flatness = increase
