@@ -22,6 +22,8 @@ DEFAULT_BAR_METRICS = [
     ("spectral_rolloff85_hz", "Rolloff 85% (Hz)"),
     ("spectral_bandwidth_hz", "Bandwidth (Hz)"),
     ("f0_median_hz", "F0 median (Hz)"),
+    ("increase_centroid_hz", "Increase centroid (Hz)"),
+    ("increase_rolloff85_hz", "Increase rolloff 85% (Hz)"),
 ]
 
 

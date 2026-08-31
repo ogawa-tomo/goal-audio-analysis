@@ -34,6 +34,10 @@ class ClipFeatures:
     voiced_fraction: float
     f1_median_hz: Optional[float] = None
     f2_median_hz: Optional[float] = None
+    increase_centroid_hz: Optional[float] = None
+    increase_rolloff85_hz: Optional[float] = None
+    increase_bandwidth_hz: Optional[float] = None
+    increase_flatness: Optional[float] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -87,11 +91,75 @@ def _attack_decay(rms: np.ndarray, times: np.ndarray, peak_idx: int, peak_rms: f
     return attack_time, decay_time
 
 
+def _increase_spectrum(
+    y: np.ndarray,
+    sr: int,
+    peak_time: float,
+    pre_start_s: float,
+    pre_end_s: float,
+    post_start_s: float,
+    post_end_s: float,
+) -> Optional[tuple[float, float, float, float]]:
+    """Characterize what newly appeared in the audio around `peak_time`.
+
+    Rather than describing the post-goal window's spectral content on its
+    own (what the other spectral_* fields do), this compares it against a
+    pre-goal baseline window and looks only at the *increase* -- energy
+    present after but not before -- per frequency bin. This isolates the
+    reaction itself from whatever ambient noise (commentary, an
+    already-ongoing chant, stadium acoustics) was already present before
+    the goal, which the raw post-goal window can't distinguish. Found to
+    show a substantially larger, still statistically significant
+    Premier-vs-LaLiga gap than the plain post-goal spectral centroid/
+    rolloff on this project's 17-clip dataset.
+
+    Returns `(centroid_hz, rolloff85_hz, bandwidth_hz, flatness)` computed
+    on the clipped-positive difference spectrum, or `None` if either
+    window is empty (e.g. `peak_time` too close to the start of the clip)
+    or the post-goal window is not louder than the baseline anywhere.
+
+    `flatness` here leans low almost by construction: most frequency bins
+    have zero increase (post <= pre there), and a geometric mean is highly
+    sensitive to near-zero values. Treat it as a rough indicator of how
+    concentrated vs. spread the added energy is, not as directly
+    comparable to `spectral_flatness`.
+    """
+    S = np.abs(librosa.stft(y, n_fft=2048, hop_length=512))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
+    times = librosa.frames_to_time(np.arange(S.shape[1]), sr=sr, hop_length=512)
+
+    pre_mask = (times >= max(0.0, peak_time + pre_start_s)) & (times < max(0.0, peak_time + pre_end_s))
+    post_mask = (times >= max(0.0, peak_time + post_start_s)) & (times < peak_time + post_end_s)
+    if pre_mask.sum() < 2 or post_mask.sum() < 2:
+        return None
+
+    pre_spec = S[:, pre_mask].mean(axis=1)
+    post_spec = S[:, post_mask].mean(axis=1)
+    increase = np.clip(post_spec - pre_spec, 0, None)
+    total = increase.sum()
+    if total <= 0:
+        return None
+
+    centroid = float(np.sum(freqs * increase) / total)
+    bandwidth = float(np.sqrt(np.sum(increase * (freqs - centroid) ** 2) / total))
+    cumsum = np.cumsum(increase)
+    idx = int(np.searchsorted(cumsum, 0.85 * total))
+    rolloff85 = float(freqs[min(idx, len(freqs) - 1)])
+    eps = 1e-10
+    geo_mean = np.exp(np.mean(np.log(increase + eps)))
+    arith_mean = np.mean(increase) + eps
+    flatness = float(geo_mean / arith_mean)
+
+    return centroid, rolloff85, bandwidth, flatness
+
+
 def analyze_clip(
     path: str | Path,
     sr: int = 22050,
     spectral_window_pre_s: float = 0.5,
     spectral_window_post_s: float = 2.5,
+    increase_pre_start_s: float = -3.0,
+    increase_pre_end_s: float = -0.5,
     with_formants: bool = True,
 ) -> ClipFeatures:
     """Extract acoustic features from one audio clip.
@@ -102,7 +170,10 @@ def analyze_clip(
     `_load_human_mark` for why. Spectral / pitch / formant features are
     computed on a window centered on that marked moment
     (`spectral_window_pre_s` before it to `spectral_window_post_s` after
-    it).
+    it). The `increase_*` fields instead describe what's *new* relative to
+    a pre-goal baseline window (`increase_pre_start_s` to
+    `increase_pre_end_s` before the marked moment) -- see
+    `_increase_spectrum`.
     """
     path = Path(path)
 
@@ -140,6 +211,16 @@ def analyze_clip(
     )
     f0_voiced = f0[~np.isnan(f0)]
 
+    increase = _increase_spectrum(
+        y, sr, peak_time,
+        increase_pre_start_s, increase_pre_end_s,
+        -spectral_window_pre_s, spectral_window_post_s,
+    )
+    if increase is not None:
+        inc_centroid, inc_rolloff85, inc_bandwidth, inc_flatness = increase
+    else:
+        inc_centroid = inc_rolloff85 = inc_bandwidth = inc_flatness = None
+
     f1_median = f2_median = None
     if with_formants:
         f1_median, f2_median = _formants(y_win, sr)
@@ -159,6 +240,10 @@ def analyze_clip(
         voiced_fraction=round(float(np.mean(~np.isnan(f0))), 3),
         f1_median_hz=f1_median,
         f2_median_hz=f2_median,
+        increase_centroid_hz=round(inc_centroid, 1) if inc_centroid is not None else None,
+        increase_rolloff85_hz=round(inc_rolloff85, 1) if inc_rolloff85 is not None else None,
+        increase_bandwidth_hz=round(inc_bandwidth, 1) if inc_bandwidth is not None else None,
+        increase_flatness=round(inc_flatness, 6) if inc_flatness is not None else None,
     )
 
 

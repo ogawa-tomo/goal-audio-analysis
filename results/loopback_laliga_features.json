@@ -13,7 +13,11 @@
     "f0_mean_hz": 849.7,
     "voiced_fraction": 0.862,
     "f1_median_hz": 869.4,
-    "f2_median_hz": 1471.6
+    "f2_median_hz": 1471.6,
+    "increase_centroid_hz": 1582.1,
+    "increase_rolloff85_hz": 2756.2,
+    "increase_bandwidth_hz": 1414.6,
+    "increase_flatness": 0.017881
   },
   {
     "file": "ucl_laliga_athleticclub_lb.wav",
@@ -29,7 +33,11 @@
     "f0_mean_hz": 877.7,
     "voiced_fraction": 0.754,
     "f1_median_hz": 869.0,
-    "f2_median_hz": 1485.3
+    "f2_median_hz": 1485.3,
+    "increase_centroid_hz": 1598.4,
+    "increase_rolloff85_hz": 2767.0,
+    "increase_bandwidth_hz": 1570.1,
+    "increase_flatness": 0.015585
   },
   {
     "file": "ucl_laliga_atletico1_lb.wav",
@@ -45,7 +53,11 @@
     "f0_mean_hz": 823.1,
     "voiced_fraction": 0.723,
     "f1_median_hz": 828.8,
-    "f2_median_hz": 1440.7
+    "f2_median_hz": 1440.7,
+    "increase_centroid_hz": 1006.7,
+    "increase_rolloff85_hz": 1098.2,
+    "increase_bandwidth_hz": 914.5,
+    "increase_flatness": 0.000203
   },
   {
     "file": "ucl_laliga_atletico2_lb.wav",
@@ -61,7 +73,11 @@
     "f0_mean_hz": 856.5,
     "voiced_fraction": 0.631,
     "f1_median_hz": 891.8,
-    "f2_median_hz": 1506.3
+    "f2_median_hz": 1506.3,
+    "increase_centroid_hz": 1054.5,
+    "increase_rolloff85_hz": 1152.0,
+    "increase_bandwidth_hz": 1004.1,
+    "increase_flatness": 4e-06
   },
   {
     "file": "ucl_laliga_barcelona_lb.wav",
@@ -77,7 +93,11 @@
     "f0_mean_hz": 839.4,
     "voiced_fraction": 0.931,
     "f1_median_hz": 876.9,
-    "f2_median_hz": 1574.7
+    "f2_median_hz": 1574.7,
+    "increase_centroid_hz": 1783.8,
+    "increase_rolloff85_hz": 2842.4,
+    "increase_bandwidth_hz": 1474.9,
+    "increase_flatness": 0.067393
   },
   {
     "file": "ucl_laliga_realmadrid2_lb.wav",
@@ -93,7 +113,11 @@
     "f0_mean_hz": 906.4,
     "voiced_fraction": 0.538,
     "f1_median_hz": 919.3,
-    "f2_median_hz": 1506.3
+    "f2_median_hz": 1506.3,
+    "increase_centroid_hz": 1258.7,
+    "increase_rolloff85_hz": 1388.9,
+    "increase_bandwidth_hz": 904.5,
+    "increase_flatness": 0.000202
   },
   {
     "file": "ucl_laliga_realmadrid3_lb.wav",
@@ -109,7 +133,11 @@
     "f0_mean_hz": 849.2,
     "voiced_fraction": 0.722,
     "f1_median_hz": 899.3,
-    "f2_median_hz": 1534.1
+    "f2_median_hz": 1534.1,
+    "increase_centroid_hz": 979.8,
+    "increase_rolloff85_hz": 1173.6,
+    "increase_bandwidth_hz": 490.3,
+    "increase_flatness": 0.0
   },
   {
     "file": "ucl_laliga_realmadrid_lb.wav",
@@ -125,6 +153,10 @@
     "f0_mean_hz": 876.2,
     "voiced_fraction": 0.738,
     "f1_median_hz": 896.7,
-    "f2_median_hz": 1520.9
+    "f2_median_hz": 1520.9,
+    "increase_centroid_hz": 1126.5,
+    "increase_rolloff85_hz": 1238.2,
+    "increase_bandwidth_hz": 874.3,
+    "increase_flatness": 2e-06
   }
 ]
