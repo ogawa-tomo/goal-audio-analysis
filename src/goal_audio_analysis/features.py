@@ -29,6 +29,8 @@ class ClipFeatures:
     spectral_bandwidth_hz: float
     spectral_flatness: float
     zero_crossing_rate: float
+    zero_crossing_rate_pre: Optional[float]
+    zero_crossing_rate_delta: Optional[float]
     f0_median_hz: Optional[float]
     f0_mean_hz: Optional[float]
     voiced_fraction: float
@@ -153,6 +155,15 @@ def _increase_spectrum(
     return centroid, rolloff85, bandwidth, flatness
 
 
+def _pre_goal_window(y: np.ndarray, sr: int, peak_time: float, pre_start_s: float, pre_end_s: float) -> Optional[np.ndarray]:
+    """Slice out the pre-goal baseline window used by `_increase_spectrum` and the zero_crossing_rate delta."""
+    pre_s = max(0.0, peak_time + pre_start_s)
+    pre_e = max(0.0, peak_time + pre_end_s)
+    if pre_e - pre_s < 0.1:
+        return None
+    return y[int(pre_s * sr):int(pre_e * sr)]
+
+
 def analyze_clip(
     path: str | Path,
     sr: int = 22050,
@@ -173,7 +184,11 @@ def analyze_clip(
     it). The `increase_*` fields instead describe what's *new* relative to
     a pre-goal baseline window (`increase_pre_start_s` to
     `increase_pre_end_s` before the marked moment) -- see
-    `_increase_spectrum`.
+    `_increase_spectrum`. `zero_crossing_rate_pre`/`_delta` apply the same
+    before/after comparison to zero-crossing rate, which (unlike the
+    spectral_* fields) is a single time-domain scalar rather than a
+    per-frequency-bin quantity, so it's compared as a plain before/after
+    delta instead of being recomputed on a difference spectrum.
     """
     path = Path(path)
 
@@ -211,6 +226,14 @@ def analyze_clip(
     )
     f0_voiced = f0[~np.isnan(f0)]
 
+    zcr_post_val = float(np.mean(zcr))
+    y_pre = _pre_goal_window(y, sr, peak_time, increase_pre_start_s, increase_pre_end_s)
+    if y_pre is not None and len(y_pre) > 0:
+        zcr_pre_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_pre)[0]))
+        zcr_delta_val = zcr_post_val - zcr_pre_val
+    else:
+        zcr_pre_val = zcr_delta_val = None
+
     increase = _increase_spectrum(
         y, sr, peak_time,
         increase_pre_start_s, increase_pre_end_s,
@@ -234,7 +257,9 @@ def analyze_clip(
         spectral_rolloff85_hz=round(float(np.mean(rolloff)), 1),
         spectral_bandwidth_hz=round(float(np.mean(bandwidth)), 1),
         spectral_flatness=round(float(np.mean(flatness)), 5),
-        zero_crossing_rate=round(float(np.mean(zcr)), 5),
+        zero_crossing_rate=round(zcr_post_val, 5),
+        zero_crossing_rate_pre=round(zcr_pre_val, 5) if zcr_pre_val is not None else None,
+        zero_crossing_rate_delta=round(zcr_delta_val, 5) if zcr_delta_val is not None else None,
         f0_median_hz=round(float(np.median(f0_voiced)), 1) if len(f0_voiced) else None,
         f0_mean_hz=round(float(np.mean(f0_voiced)), 1) if len(f0_voiced) else None,
         voiced_fraction=round(float(np.mean(~np.isnan(f0))), 3),
