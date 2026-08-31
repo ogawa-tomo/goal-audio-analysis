@@ -31,31 +31,16 @@ def cmd_extract_clip(args):
 
 
 def cmd_analyze(args):
-    results = [
-        features.analyze_clip(
-            p, with_formants=not args.no_formants, peak_search_window_s=args.peak_search_window,
-            smooth_window_s=args.smooth_window,
-            candidate_height_ratio=args.peak_height_ratio,
-            candidate_min_separation_s=args.peak_min_separation,
-        ).to_dict()
-        for p in args.clips
-    ]
-    for r in results:
-        candidates = r.get("candidate_peak_times_s") or []
-        if r["human_corrected"]:
-            print(
-                f"NOTE: {r['file']}: human selection ({r['selected_peak_time_s']}s) overrode the "
-                f"loudest candidate ({r['default_peak_time_s']}s) -- the naive choice would have "
-                f"been wrong.",
-                file=sys.stderr,
-            )
-        elif len(candidates) > 1 and r.get("selected_peak_time_s") is None:
-            print(
-                f"NOTE: {r['file']}: {len(candidates)} candidates found {candidates}s -- listen "
-                f"at each timestamp and select the correct one with scripts/mark_goal_moment.py "
-                f"(currently using the loudest, {r['peak_time_s']}s, by default).",
-                file=sys.stderr,
-            )
+    results = []
+    skipped = []
+    for p in args.clips:
+        try:
+            results.append(features.analyze_clip(p, with_formants=not args.no_formants).to_dict())
+        except features.MissingMarkError as e:
+            print(f"error: {e}", file=sys.stderr)
+            skipped.append(p)
+    if skipped:
+        print(f"skipped {len(skipped)} unmarked clip(s); {len(results)} analyzed", file=sys.stderr)
     text = json.dumps(results, indent=2, ensure_ascii=False)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
@@ -96,9 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("center", type=float, help="timestamp (seconds) to center the clip on")
     p.add_argument(
         "--lead", type=float, default=3.0,
-        help="seconds before `center` to start the clip (default 3.0; pair with "
-             "analyze's --peak-search-window so that lead + search-window's "
-             "post-`center` reach stays consistent -- see README)",
+        help="seconds before `center` to start the clip (default 3.0) -- err generously here, "
+             "since the goal moment itself is later specified exactly via "
+             "scripts/mark_goal_moment.py, not detected automatically",
     )
     p.add_argument(
         "--duration", type=float, default=9.0,
@@ -110,30 +95,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("clips", nargs="+")
     p.add_argument("-o", "--out", help="write JSON here instead of stdout")
     p.add_argument("--no-formants", action="store_true", help="skip formant (F1/F2) analysis")
-    p.add_argument(
-        "--peak-search-window", type=float, default=8.0, dest="peak_search_window",
-        help="only search the first N seconds of the clip for the RMS peak (default 8.0, "
-             "matching the loopback-recording convention: pause 5s before, --duration 14 -- "
-             "see README). If instead analyzing a clip cut via extract-clip's --lead "
-             "3/--duration 9 defaults, pass 6.0 here to match",
-    )
-    p.add_argument(
-        "--smooth-window", type=float, default=0.3, dest="smooth_window",
-        help="moving-average width (seconds) applied to the RMS envelope before peak-searching "
-             "(default 0.3). Prevents a brief single-frame click (e.g. a recording glitch) from "
-             "outscoring a genuine multi-second crowd swell. Set to 0 to disable",
-    )
-    p.add_argument(
-        "--peak-height-ratio", type=float, default=0.8, dest="peak_height_ratio",
-        help="a local RMS maximum within the search window counts as a rival candidate peak "
-             "if its height is at least this fraction of the main peak's height (default 0.8)",
-    )
-    p.add_argument(
-        "--peak-min-separation", type=float, default=2.0, dest="peak_min_separation",
-        help="candidates closer together than this many seconds are merged, keeping the taller "
-             "one (default 2.0) -- avoids treating texture within one crowd swell as separate "
-             "events",
-    )
     p.set_defaults(func=cmd_analyze)
 
     p = sub.add_parser("compare", help="compare two groups of pre-computed features")

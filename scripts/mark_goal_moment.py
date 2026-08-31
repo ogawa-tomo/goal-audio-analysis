@@ -1,65 +1,69 @@
-r"""機械的に検出したゴール瞬間の候補から、正しいものを人間が選ぶ。
+r"""ゴールの瞬間を人間が指定し、解析の基準点として登録する。
 
-`goal_audio_analysis.features.analyze_clip`と同じ候補検出ロジックでこのクリップの
-候補時刻を列挙し、番号付きで表示する。それぞれの候補の時刻を、通常のメディアプレイヤーや
-`tools/audio_time_reader.html` などで実際に聴いて確認したうえで、正しいものの番号を
-`--pick` で選ぶと、その時刻をサイドカーファイル(`<clip>.mark.json`)に保存する。以降
-`goal-audio analyze` を実行すると、このファイルを自動的に読み込み、選ばれた時刻を実際の
-特徴量計算(attack/decay時間・スペクトル特徴量など)の基準点として使う。
-
-**重要**: `--peak-search-window` は、実際に`goal-audio analyze`に渡す値と必ず一致させる
-こと。既定値(8.0)はループバック録音したクリップ(`data/clips/*_lb.wav`、`--duration 14`)
-用。`extract-clip`の`--lead 3 --duration 9`で切り出したクリップを扱う場合は`6`を指定する
-こと -- 窓が合っていないと、本来検出されるべき候補が探索範囲外に切り捨てられ、見つから
-なくなる(この既定値がまだ6.0だった頃、実際にこれで見落としを起こしている)。
+ここで指定した時刻は、そのまま(補正なしで)`goal-audio analyze`の解析基準点として
+使われる -- アルゴリズムによる自動検出や候補との照合は一切行わない。**マークして
+いないクリップは`goal-audio analyze`がエラーで拒否する**(このプロジェクトでは、
+音量ベースの自動検出を何通りも試したが、いずれも「音量が一番大きい瞬間」や「音量の
+変化が一番急な瞬間」が、実際のゴールの瞬間と一致しない実例が繰り返し見つかったため、
+自動検出そのものを廃止した)。
 
 ## 使い方
 
-    python scripts/mark_goal_moment.py <clip.wav>
-        候補一覧を表示するだけ(まだ選択しない)
-    python scripts/mark_goal_moment.py <clip.wav> --pick <番号>
-        候補の中から正しいものを選び、選択結果を保存する
+1. 対象のクリップを、0.01秒精度で再生位置を確認できるツール(ブラウザの`<audio>`要素を
+   使った簡易ツールなど、リポジトリ外で管理)で再生する
+2. **一度聞いて反応した時刻をそのまま使わないこと。** 巻き戻し・微調整(±0.1秒など)を
+   繰り返して、確信を持てる時刻に絞り込んでから確定すること。ここで指定した数値は
+   そのまま解析に使われるため、ここでの精度がそのまま解析結果の精度になる
+3. 確定した時刻を、以下のように渡す
 
-## 設計メモ
+    python scripts/mark_goal_moment.py <clip.wav> <time>
 
-以前のバージョンは、人間が自由に時刻を入力する方式だった。しかしこの方式には、
-音声を一度だけ聴いて「ゴールだと感じた瞬間」に反応してその数値をそのまま申告する、
-という実際の運用では、反応速度のズレが計測値にそのまま混入するという問題がある
-(何度も聞き直せば理論上ゼロにできるが、実際にそうする保証はない)。
+`<time>` は秒数(例: `4.2`)、または `分:秒` 形式(例: `0:04.2`)のどちらでも指定できる。
+これで、`<clip>`と同じ場所に`<clip>.mark.json`が保存される。
 
-これに対し、「機械が検出した候補の中から正しいものを選ぶ」方式であれば、候補同士は
-通常2秒以上離れているため、多少の反応の遅れがあっても「どの候補を選んだか」という
-判断そのものは揺らがない。かつ、実際に解析へ渡される時刻は人間の申告値ではなく、
-機械が算出した精密な値になるため、反応速度のズレが計測精度に影響しない。
+## 設計の経緯
 
-なお、この方式が機能するには「正しい候補がそもそも一覧に存在する」ことが前提になる。
-持続的な盛り上がり(単発の鋭いピークがない)を専用に検出する仕組みも試したが、実際の
-17クリップで検証したところ、探索窓を正しく広げてさえいれば、振幅ピーク型の検出だけで
-持続区間内の小さな起伏を拾えており、追加の検出ロジックは不要と判明したため削除した
-(むしろ大半のクリップで、単なる音量減衰の揺らぎを別候補として誤検出していた)。それでも
-候補に正解が存在しない場合は、検出ロジック自体(閾値やこのスクリプトの候補検出
-パラメータ)を見直す必要がある。
+これで3回目の設計変更になる。
+
+1. (v1) スクリプト自身がスピーカーで再生し、リアルタイムでキー入力を検知する方式
+   -- 「`play()`を呼んでから実際に音が聞こえるまでの遅延」という技術的なバグに
+   悩まされ、精度も安定しなかったため廃止
+2. (v3) 市販のメディアプレイヤーで再生・一時停止し、表示された時刻をそのまま
+   読み取って渡す方式に単純化。ただし実際の運用(一度だけ再生して反応した瞬間を
+   申告する)では、反応速度のズレが計測値に混入するという弱点が残っていた
+3. その弱点への対策として、いったんは「アルゴリズムが検出した複数の候補から
+   人間が選ぶ」方式(候補同士は離れているため反応速度に左右されにくい)を試した。
+   しかし実際のデータで、正解がそもそも候補に含まれないケース(音量が緩やかに
+   盛り上がる持続的な展開で、目立った山がない)が繰り返し見つかり、変化率ベースの
+   検出に切り替える等の改良も試したが、どれも別のクリップで悪化するなど汎化しな
+   かった。結局、**「この数値がそのまま使われる」と明確に意識した上で、慎重に
+   確認して確定してもらう**という運用(今のこのバージョン)に戻すのが、最も単純で
+   確実という結論になった
+
+このスクリプト自体はOS依存がなく、WSL側からでも実行できる。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
-from goal_audio_analysis import features
+
+def parse_time(value: str) -> float:
+    """Parse a time string as either plain seconds ("4.2") or "M:SS[.ms]" ("0:04.2")."""
+    value = value.strip()
+    if re.match(r"^\d+:\d+(\.\d+)?$", value):
+        minutes_str, seconds_str = value.split(":")
+        return int(minutes_str) * 60 + float(seconds_str)
+    return float(value)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("clip", help="対象のWAVファイルのパス")
-    parser.add_argument("--pick", type=int, default=None, help="正しい候補の番号(1始まり)。省略すると候補一覧のみ表示する")
-    parser.add_argument(
-        "--peak-search-window", type=float, default=8.0, dest="peak_search_window",
-        help="`goal-audio analyze`に渡すのと同じ値を指定すること(既定8.0、ループバック録音用)",
-    )
-    parser.add_argument("--peak-height-ratio", type=float, default=0.8, dest="peak_height_ratio")
-    parser.add_argument("--peak-min-separation", type=float, default=2.0, dest="peak_min_separation")
+    parser.add_argument("time", help="ゴールの瞬間の再生位置。秒数(例: 4.2)または 分:秒(例: 0:04.2)")
     args = parser.parse_args(argv)
 
     clip_path = Path(args.clip)
@@ -67,35 +71,18 @@ def main(argv=None):
         print(f"error: file not found: {clip_path}", file=sys.stderr)
         return 1
 
-    result = features.analyze_clip(
-        clip_path,
-        with_formants=False,
-        peak_search_window_s=args.peak_search_window,
-        candidate_height_ratio=args.peak_height_ratio,
-        candidate_min_separation_s=args.peak_min_separation,
-    )
-    candidates = result.candidate_peak_times_s
-
-    print(f"{clip_path.name}: {len(candidates)} candidate(s)")
-    for i, t in enumerate(candidates, start=1):
-        marker = " (loudest)" if abs(t - result.default_peak_time_s) < 1e-6 else ""
-        print(f"  [{i}] {t:.2f}s{marker}")
-
-    if args.pick is None:
-        print("\n各候補の時刻を実際に聴いて確認し、--pick <番号> で選択してください。")
-        return 0
-
-    if not (1 <= args.pick <= len(candidates)):
-        print(f"error: --pick must be between 1 and {len(candidates)}", file=sys.stderr)
+    try:
+        human_marked_time_s = round(parse_time(args.time), 3)
+    except ValueError:
+        print(f"error: could not parse time: {args.time!r} (expected seconds or M:SS)", file=sys.stderr)
         return 1
 
-    selected = candidates[args.pick - 1]
     mark_path = clip_path.with_suffix(".mark.json")
     mark_path.write_text(
-        json.dumps({"selected_peak_time_s": selected}, indent=2, ensure_ascii=False),
+        json.dumps({"human_marked_time_s": human_marked_time_s}, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    print(f"saved: {mark_path} (selected_peak_time_s={selected})")
+    print(f"saved: {mark_path} (human_marked_time_s={human_marked_time_s})")
     return 0
 
 
