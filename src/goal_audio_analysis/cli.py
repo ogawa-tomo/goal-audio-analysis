@@ -41,32 +41,21 @@ def cmd_analyze(args):
         for p in args.clips
     ]
     for r in results:
-        diff = r.get("peak_vs_mark_diff_s")
-        if diff is not None and abs(diff) > args.mark_threshold:
+        candidates = r.get("candidate_peak_times_s") or []
+        if r["human_corrected"]:
             print(
-                f"WARNING: {r['file']}: peak_time_s ({r['peak_time_s']}) differs from the "
-                f"human mark ({r['human_marked_time_s']}) by {diff:+.2f}s (threshold "
-                f"{args.mark_threshold}s). The detected peak may not be the intended event -- "
-                f"inspect this clip (see scripts/mark_goal_moment.py).",
+                f"NOTE: {r['file']}: human selection ({r['selected_peak_time_s']}s) overrode the "
+                f"loudest candidate ({r['default_peak_time_s']}s) -- the naive choice would have "
+                f"been wrong.",
                 file=sys.stderr,
             )
-
-        candidates = r.get("candidate_peak_times_s") or []
-        if len(candidates) > 1:
-            if r.get("human_marked_time_s") is None:
-                print(
-                    f"NOTE: {r['file']}: {len(candidates)} candidate peaks found {candidates}s -- "
-                    f"listen at each timestamp (e.g. via a media player) and mark the correct "
-                    f"one with scripts/mark_goal_moment.py.",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"NOTE: {r['file']}: {len(candidates)} candidate peaks found {candidates}s "
-                    f"(already marked at {r['human_marked_time_s']}s) -- if that mark wasn't "
-                    f"chosen from among these, double check it against them.",
-                    file=sys.stderr,
-                )
+        elif len(candidates) > 1 and r.get("selected_peak_time_s") is None:
+            print(
+                f"NOTE: {r['file']}: {len(candidates)} candidates found {candidates}s -- listen "
+                f"at each timestamp and select the correct one with scripts/mark_goal_moment.py "
+                f"(currently using the loudest, {r['peak_time_s']}s, by default).",
+                file=sys.stderr,
+            )
     text = json.dumps(results, indent=2, ensure_ascii=False)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")
@@ -134,21 +123,15 @@ def build_parser() -> argparse.ArgumentParser:
              "outscoring a genuine multi-second crowd swell. Set to 0 to disable",
     )
     p.add_argument(
-        "--mark-threshold", type=float, default=1.2, dest="mark_threshold",
-        help="if a clip has a human mark (see scripts/mark_goal_moment.py) and it differs from "
-             "the detected peak_time_s by more than this many seconds (default 1.2), print a "
-             "warning -- the detected peak may be the wrong event",
-    )
-    p.add_argument(
         "--peak-height-ratio", type=float, default=0.8, dest="peak_height_ratio",
         help="a local RMS maximum within the search window counts as a rival candidate peak "
              "if its height is at least this fraction of the main peak's height (default 0.8)",
     )
     p.add_argument(
         "--peak-min-separation", type=float, default=2.0, dest="peak_min_separation",
-        help="candidate peaks closer together than this many seconds are merged, keeping the "
-             "taller one (default 2.0) -- avoids treating texture within one crowd swell as "
-             "separate events",
+        help="candidates closer together than this many seconds are merged, keeping the taller "
+             "one (default 2.0) -- avoids treating texture within one crowd swell as separate "
+             "events",
     )
     p.set_defaults(func=cmd_analyze)
 
