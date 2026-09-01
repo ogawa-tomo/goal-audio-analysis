@@ -22,6 +22,7 @@ class MissingMarkError(ValueError):
 class ClipFeatures:
     file: str
     peak_time_s: float
+    onset_time_s: float
     attack_time_s: float
     decay_time_s: Optional[float]
     spectral_centroid_hz: float
@@ -74,6 +75,37 @@ def _load_human_mark(path: Path) -> Optional[float]:
         return None
 
 
+def _load_onset_mark(path: Path) -> Optional[float]:
+    """Load `onset_marked_time_s` from `<path>`'s sidecar `.mark.json`, if any.
+
+    This is a second, distinct anchor from `human_marked_time_s`: the
+    moment the crowd's reaction *starts rising*, as opposed to the moment
+    it *feels loudest*. The two are typically a few tenths of a second
+    apart, not interchangeable -- attack/decay time is defined relative to
+    the amplitude peak and needs `human_marked_time_s`, but a window meant
+    to describe (or compare before/after) the reaction's own character
+    should start at the onset, not the peak, or it risks including
+    pre-reaction ambient audio (commentary, an already-ongoing chant)
+    on the "reaction" side of the boundary.
+
+    Values here were obtained by taking the spectral-shape-change
+    candidate (see the onset-detection experiments in this project's
+    history) nearest to each clip's existing peak mark, then confirming
+    by ear and by inspecting the candidate/mark plot for all 17 clips --
+    not from a separate free-form human pass the way `human_marked_time_s`
+    was. Both anchors are still explicit, recorded values, not
+    recomputed silently at analysis time.
+    """
+    mark_path = path.with_suffix(".mark.json")
+    if not mark_path.exists():
+        return None
+    try:
+        data = json.loads(mark_path.read_text(encoding="utf-8"))
+        return float(data["onset_marked_time_s"])
+    except (json.JSONDecodeError, KeyError, ValueError, OSError):
+        return None
+
+
 def _nearest_index(times: np.ndarray, t: float) -> int:
     return int(np.argmin(np.abs(times - t)))
 
@@ -96,13 +128,13 @@ def _attack_decay(rms: np.ndarray, times: np.ndarray, peak_idx: int, peak_rms: f
 def _increase_spectrum(
     y: np.ndarray,
     sr: int,
-    peak_time: float,
+    anchor_time: float,
     pre_start_s: float,
     pre_end_s: float,
     post_start_s: float,
     post_end_s: float,
 ) -> Optional[tuple[float, float, float, float]]:
-    """Characterize what newly appeared in the audio around `peak_time`.
+    """Characterize what newly appeared in the audio around `anchor_time`.
 
     Rather than describing the post-goal window's spectral content on its
     own (what the other spectral_* fields do), this compares it against a
@@ -117,7 +149,7 @@ def _increase_spectrum(
 
     Returns `(centroid_hz, rolloff85_hz, bandwidth_hz, flatness)` computed
     on the clipped-positive difference spectrum, or `None` if either
-    window is empty (e.g. `peak_time` too close to the start of the clip)
+    window is empty (e.g. `anchor_time` too close to the start of the clip)
     or the post-goal window is not louder than the baseline anywhere.
 
     `flatness` here leans low almost by construction: most frequency bins
@@ -130,8 +162,8 @@ def _increase_spectrum(
     freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
     times = librosa.frames_to_time(np.arange(S.shape[1]), sr=sr, hop_length=512)
 
-    pre_mask = (times >= max(0.0, peak_time + pre_start_s)) & (times < max(0.0, peak_time + pre_end_s))
-    post_mask = (times >= max(0.0, peak_time + post_start_s)) & (times < peak_time + post_end_s)
+    pre_mask = (times >= max(0.0, anchor_time + pre_start_s)) & (times < max(0.0, anchor_time + pre_end_s))
+    post_mask = (times >= max(0.0, anchor_time + post_start_s)) & (times < anchor_time + post_end_s)
     if pre_mask.sum() < 2 or post_mask.sum() < 2:
         return None
 
@@ -155,14 +187,14 @@ def _increase_spectrum(
     return centroid, rolloff85, bandwidth, flatness
 
 
-def _relative_window(y: np.ndarray, sr: int, peak_time: float, start_s: float, end_s: float) -> Optional[np.ndarray]:
-    """Slice out `[peak_time + start_s, peak_time + end_s)`, clamped to not start before 0.
+def _relative_window(y: np.ndarray, sr: int, anchor_time: float, start_s: float, end_s: float) -> Optional[np.ndarray]:
+    """Slice out `[anchor_time + start_s, anchor_time + end_s)`, clamped to not start before 0.
 
     Used for the pre/post-goal baseline windows shared by `_increase_spectrum`
     and the zero_crossing_rate before/after delta.
     """
-    w_s = max(0.0, peak_time + start_s)
-    w_e = max(0.0, peak_time + end_s)
+    w_s = max(0.0, anchor_time + start_s)
+    w_e = max(0.0, anchor_time + end_s)
     if w_e - w_s < 0.1:
         return None
     return y[int(w_s * sr):int(w_e * sr)]
@@ -171,41 +203,47 @@ def _relative_window(y: np.ndarray, sr: int, peak_time: float, start_s: float, e
 def analyze_clip(
     path: str | Path,
     sr: int = 22050,
-    spectral_window_pre_s: float = 0.5,
-    spectral_window_post_s: float = 2.5,
+    spectral_window_s: float = 3.0,
     increase_window_s: float = 2.0,
     with_formants: bool = True,
 ) -> ClipFeatures:
     """Extract acoustic features from one audio clip.
 
-    Requires a human-specified goal moment (`scripts/mark_goal_moment.py`,
-    stored in `<clip>.mark.json`) -- raises `MissingMarkError` if the clip
-    hasn't been marked yet. There is no algorithmic fallback: see
-    `_load_human_mark` for why. Spectral / pitch / formant features are
-    computed on a window centered on that marked moment
-    (`spectral_window_pre_s` before it to `spectral_window_post_s` after
-    it).
+    Requires two human-confirmed anchors in `<clip>.mark.json` --
+    `human_marked_time_s` (the amplitude peak) and `onset_marked_time_s`
+    (where the reaction starts rising) -- raises `MissingMarkError` if
+    either is missing. There is no algorithmic fallback: see
+    `_load_human_mark`/`_load_onset_mark` for why.
 
-    The `increase_*` and `zero_crossing_rate_pre`/`_delta` fields instead
-    compare a pre-goal baseline window against a post-goal window, split
-    symmetrically at the marked moment itself: `increase_window_s` before
-    it (the baseline) vs. `increase_window_s` after it (the reaction) --
-    see `_increase_spectrum`. This is a separate, independently-sized
-    window from `spectral_window_pre_s`/`_post_s` above, which exists only
-    to describe the post-goal sound on its own (and starts slightly before
-    the marked moment to capture the reaction's attack). `increase_*`
-    fields need a clean, non-overlapping before/after split instead, so
-    they don't share that window.
+    Attack/decay time is computed relative to the peak (it's defined in
+    terms of the peak amplitude, so it needs that anchor specifically).
+    Everything else that describes or compares the reaction's *character*
+    -- the plain spectral_*/zero_crossing_rate fields, and the
+    increase_*/zero_crossing_rate_pre/_delta before/after comparisons --
+    is anchored on the onset instead, so no pre-reaction ambient audio
+    (commentary, an already-ongoing chant) ends up on the "reaction" side
+    of any window. The plain spectral_* window is `[onset,
+    onset + spectral_window_s)`; the before/after comparisons split
+    exactly at the onset, `increase_window_s` on each side -- see
+    `_increase_spectrum`.
     """
     path = Path(path)
 
     human_marked_time_s = _load_human_mark(path)
     if human_marked_time_s is None:
         raise MissingMarkError(
-            f"{path.name} has no goal-moment mark. Run "
+            f"{path.name} has no goal-moment (peak) mark. Run "
             f"`python scripts/mark_goal_moment.py {path}` first."
         )
     peak_time = human_marked_time_s
+
+    onset_marked_time_s = _load_onset_mark(path)
+    if onset_marked_time_s is None:
+        raise MissingMarkError(
+            f"{path.name} has no onset mark (onset_marked_time_s missing from "
+            f"{path.with_suffix('.mark.json').name})."
+        )
+    onset_time = onset_marked_time_s
 
     y, _sr = librosa.load(path, sr=sr, mono=True)
 
@@ -216,8 +254,8 @@ def analyze_clip(
     peak_rms = float(rms[peak_idx])
     attack_time, decay_time = _attack_decay(rms, times, peak_idx, peak_rms)
 
-    win_start = max(0.0, peak_time - spectral_window_pre_s)
-    win_end = peak_time + spectral_window_post_s
+    win_start = onset_time
+    win_end = onset_time + spectral_window_s
     s_idx = int(win_start * sr)
     e_idx = min(len(y), int(win_end * sr))
     y_win = y[s_idx:e_idx]
@@ -234,8 +272,8 @@ def analyze_clip(
     f0_voiced = f0[~np.isnan(f0)]
 
     zcr_post_val = float(np.mean(zcr))
-    y_pre = _relative_window(y, sr, peak_time, -increase_window_s, 0.0)
-    y_post_for_delta = _relative_window(y, sr, peak_time, 0.0, increase_window_s)
+    y_pre = _relative_window(y, sr, onset_time, -increase_window_s, 0.0)
+    y_post_for_delta = _relative_window(y, sr, onset_time, 0.0, increase_window_s)
     if y_pre is not None and len(y_pre) > 0 and y_post_for_delta is not None and len(y_post_for_delta) > 0:
         zcr_pre_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_pre)[0]))
         zcr_delta_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_post_for_delta)[0])) - zcr_pre_val
@@ -243,7 +281,7 @@ def analyze_clip(
         zcr_pre_val = zcr_delta_val = None
 
     increase = _increase_spectrum(
-        y, sr, peak_time,
+        y, sr, onset_time,
         -increase_window_s, 0.0,
         0.0, increase_window_s,
     )
@@ -259,6 +297,7 @@ def analyze_clip(
     return ClipFeatures(
         file=path.name,
         peak_time_s=round(peak_time, 2),
+        onset_time_s=round(onset_time, 2),
         attack_time_s=round(attack_time, 3),
         decay_time_s=round(decay_time, 3) if decay_time is not None else None,
         spectral_centroid_hz=round(float(np.mean(centroid)), 1),
