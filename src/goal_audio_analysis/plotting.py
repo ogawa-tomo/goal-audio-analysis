@@ -65,6 +65,121 @@ def plot_bar_comparison(
     return out_path
 
 
+def _plot_curve_overlay(
+    curves_a: list[tuple[np.ndarray, np.ndarray]],
+    curves_b: list[tuple[np.ndarray, np.ndarray]],
+    out_path: str | Path,
+    label_a: str,
+    label_b: str,
+    freq_max_hz: float,
+    title: str,
+    ylabel: str,
+) -> Path:
+    """Shared implementation for `plot_increase_spectrum_overlay`/`plot_spectrum_overlay`.
+
+    Each clip's curve is normalized to sum to 1 before averaging, so the
+    plot compares *shape* rather than raw loudness -- keeping per-
+    recording gain differences from dominating the comparison. Individual
+    clips are drawn thin/faint; the group mean is drawn bold.
+    """
+    fig, ax = plt.subplots(figsize=(9, 6))
+
+    for curves, label, color in [(curves_a, label_a, DEFAULT_COLOR_A), (curves_b, label_b, DEFAULT_COLOR_B)]:
+        normalized = []
+        freqs_ref = None
+        for freqs, values in curves:
+            if freqs_ref is None:
+                freqs_ref = freqs
+            normalized.append(values / values.sum())
+            ax.plot(freqs, normalized[-1], color=color, alpha=0.25, linewidth=1)
+        if normalized:
+            mean_curve = np.mean(normalized, axis=0)
+            ax.plot(freqs_ref, mean_curve, color=color, linewidth=2.5,
+                    label=f"{label} (mean, n={len(normalized)})")
+
+    ax.set_xlim(0, freq_max_hz)
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(alpha=0.3)
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return out_path
+
+
+def plot_increase_spectrum_overlay(
+    curves_a: list[tuple[np.ndarray, np.ndarray]],
+    curves_b: list[tuple[np.ndarray, np.ndarray]],
+    out_path: str | Path,
+    label_a: str = "A",
+    label_b: str = "B",
+    freq_max_hz: float = 6000.0,
+    title: str = "Increase spectrum shape (onset-anchored)",
+) -> Path:
+    """Overlay each group's per-clip increase-spectrum shape plus the group mean.
+
+    `curves_a`/`curves_b` are lists of `(freqs, increase)` pairs, e.g. from
+    `features.increase_spectrum_curve` -- the onset-anchored difference
+    (post-onset minus pre-onset window, negative values clipped to 0), so
+    this isolates newly-added energy from whatever ambient audio was
+    already present before the onset.
+    """
+    return _plot_curve_overlay(
+        curves_a, curves_b, out_path, label_a, label_b, freq_max_hz, title,
+        ylabel="Normalized increase (shape, arbitrary units)",
+    )
+
+
+def plot_spectrum_overlay(
+    curves_a: list[tuple[np.ndarray, np.ndarray]],
+    curves_b: list[tuple[np.ndarray, np.ndarray]],
+    out_path: str | Path,
+    label_a: str = "A",
+    label_b: str = "B",
+    freq_max_hz: float = 6000.0,
+    title: str = "Spectrum shape (post-onset window)",
+) -> Path:
+    """Overlay each group's raw post-onset average-spectrum shape plus the group mean.
+
+    `curves_a`/`curves_b` are lists of `(freqs, spectrum)` pairs, e.g. from
+    `features.spectrum_curve` -- the raw post-onset window (what
+    spectral_centroid_hz etc. are computed from), not a difference against
+    a pre-onset baseline, so it still reflects whatever ambient audio was
+    already present in that window.
+    """
+    return _plot_curve_overlay(
+        curves_a, curves_b, out_path, label_a, label_b, freq_max_hz, title,
+        ylabel="Normalized magnitude (shape, arbitrary units)",
+    )
+
+
+def plot_formant_envelope_overlay(
+    curves_a: list[tuple[np.ndarray, np.ndarray]],
+    curves_b: list[tuple[np.ndarray, np.ndarray]],
+    out_path: str | Path,
+    label_a: str = "A",
+    label_b: str = "B",
+    freq_max_hz: float = 5500.0,
+    title: str = "Formant (LPC) envelope shape (post-onset window)",
+) -> Path:
+    """Overlay each group's LPC spectral-envelope shape plus the group mean.
+
+    `curves_a`/`curves_b` are lists of `(freqs, envelope)` pairs from
+    `features.formant_envelope_curve` -- the resonance shape F1/F2 are
+    picked from as peaks, rather than the FFT magnitude spectrum
+    `plot_spectrum_overlay` shows.
+    """
+    return _plot_curve_overlay(
+        curves_a, curves_b, out_path, label_a, label_b, freq_max_hz, title,
+        ylabel="Normalized LPC envelope (shape, arbitrary units)",
+    )
+
+
 def plot_formant_chart(
     group_a: list[dict],
     group_b: list[dict],

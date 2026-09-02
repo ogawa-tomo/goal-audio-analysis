@@ -73,6 +73,55 @@ def cmd_compare(args):
         print(f"plots saved under: {out_dir}")
 
 
+def cmd_spectrum_plot(args):
+    def load_curves(paths, curve_fn):
+        curves = []
+        skipped = []
+        for p in paths:
+            try:
+                curve = curve_fn(p)
+            except features.MissingMarkError as e:
+                print(f"error: {e}", file=sys.stderr)
+                skipped.append(p)
+                continue
+            if curve is not None:
+                curves.append(curve)
+            else:
+                skipped.append(p)
+        if skipped:
+            print(f"skipped {len(skipped)} clip(s) with no usable spectrum", file=sys.stderr)
+        return curves
+
+    out_dir = Path(args.out_dir)
+
+    inc_a = load_curves(args.group_a, features.increase_spectrum_curve)
+    inc_b = load_curves(args.group_b, features.increase_spectrum_curve)
+    inc_out = out_dir / "increase_spectrum.png"
+    plotting.plot_increase_spectrum_overlay(
+        inc_a, inc_b, inc_out, args.label_a, args.label_b,
+        title=f"Increase spectrum shape: {args.label_a} vs {args.label_b}",
+    )
+    print(f"saved: {inc_out}")
+
+    abs_a = load_curves(args.group_a, features.spectrum_curve)
+    abs_b = load_curves(args.group_b, features.spectrum_curve)
+    abs_out = out_dir / "spectrum_absolute.png"
+    plotting.plot_spectrum_overlay(
+        abs_a, abs_b, abs_out, args.label_a, args.label_b,
+        title=f"Spectrum shape (post-onset window): {args.label_a} vs {args.label_b}",
+    )
+    print(f"saved: {abs_out}")
+
+    fmt_a = load_curves(args.group_a, features.formant_envelope_curve)
+    fmt_b = load_curves(args.group_b, features.formant_envelope_curve)
+    fmt_out = out_dir / "formant_envelope.png"
+    plotting.plot_formant_envelope_overlay(
+        fmt_a, fmt_b, fmt_out, args.label_a, args.label_b,
+        title=f"Formant (LPC) envelope shape: {args.label_a} vs {args.label_b}",
+    )
+    print(f"saved: {fmt_out}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="goal-audio")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -106,6 +155,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--label-b", default="B")
     p.add_argument("-o", "--out-dir", help="directory to save comparison plots into")
     p.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser("spectrum-plot", help="overlay each group's onset-anchored increase-spectrum shape")
+    p.add_argument("--group-a", nargs="+", required=True, dest="group_a", help="clip wav paths for group A")
+    p.add_argument("--group-b", nargs="+", required=True, dest="group_b", help="clip wav paths for group B")
+    p.add_argument("--label-a", default="A")
+    p.add_argument("--label-b", default="B")
+    p.add_argument("-o", "--out-dir", default="results", help="directory to save the plot into")
+    p.set_defaults(func=cmd_spectrum_plot)
 
     return parser
 

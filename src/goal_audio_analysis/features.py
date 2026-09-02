@@ -12,6 +12,7 @@ from typing import Optional
 
 import numpy as np
 import librosa
+import scipy.signal
 
 
 class MissingMarkError(ValueError):
@@ -76,6 +77,42 @@ def _load_onset_mark(path: Path) -> Optional[float]:
         return None
 
 
+def _increase_spectrum_array(
+    y: np.ndarray,
+    sr: int,
+    anchor_time: float,
+    pre_start_s: float,
+    pre_end_s: float,
+    post_start_s: float,
+    post_end_s: float,
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """Compute the clipped-positive difference spectrum underlying `_increase_spectrum`.
+
+    Returns `(freqs, increase)` -- the per-frequency-bin energy present in
+    the post-anchor window but not the pre-anchor one -- or `None` if
+    either window is empty (e.g. `anchor_time` too close to the start of
+    the clip) or the post window isn't louder than the baseline anywhere.
+    Split out from `_increase_spectrum` so the actual shape can be
+    inspected directly (see `increase_spectrum_curve`) instead of only
+    its centroid/rolloff/bandwidth/flatness summary.
+    """
+    S = np.abs(librosa.stft(y, n_fft=2048, hop_length=512))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
+    times = librosa.frames_to_time(np.arange(S.shape[1]), sr=sr, hop_length=512)
+
+    pre_mask = (times >= max(0.0, anchor_time + pre_start_s)) & (times < max(0.0, anchor_time + pre_end_s))
+    post_mask = (times >= max(0.0, anchor_time + post_start_s)) & (times < anchor_time + post_end_s)
+    if pre_mask.sum() < 2 or post_mask.sum() < 2:
+        return None
+
+    pre_spec = S[:, pre_mask].mean(axis=1)
+    post_spec = S[:, post_mask].mean(axis=1)
+    increase = np.clip(post_spec - pre_spec, 0, None)
+    if increase.sum() <= 0:
+        return None
+    return freqs, increase
+
+
 def _increase_spectrum(
     y: np.ndarray,
     sr: int,
@@ -99,9 +136,8 @@ def _increase_spectrum(
     rolloff on this project's 17-clip dataset.
 
     Returns `(centroid_hz, rolloff85_hz, bandwidth_hz, flatness)` computed
-    on the clipped-positive difference spectrum, or `None` if either
-    window is empty (e.g. `anchor_time` too close to the start of the clip)
-    or the post-goal window is not louder than the baseline anywhere.
+    on the clipped-positive difference spectrum, or `None` under the same
+    conditions as `_increase_spectrum_array`.
 
     `flatness` here leans low almost by construction: most frequency bins
     have zero increase (post <= pre there), and a geometric mean is highly
@@ -109,21 +145,11 @@ def _increase_spectrum(
     concentrated vs. spread the added energy is, not as directly
     comparable to `spectral_flatness`.
     """
-    S = np.abs(librosa.stft(y, n_fft=2048, hop_length=512))
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
-    times = librosa.frames_to_time(np.arange(S.shape[1]), sr=sr, hop_length=512)
-
-    pre_mask = (times >= max(0.0, anchor_time + pre_start_s)) & (times < max(0.0, anchor_time + pre_end_s))
-    post_mask = (times >= max(0.0, anchor_time + post_start_s)) & (times < anchor_time + post_end_s)
-    if pre_mask.sum() < 2 or post_mask.sum() < 2:
+    result = _increase_spectrum_array(y, sr, anchor_time, pre_start_s, pre_end_s, post_start_s, post_end_s)
+    if result is None:
         return None
-
-    pre_spec = S[:, pre_mask].mean(axis=1)
-    post_spec = S[:, post_mask].mean(axis=1)
-    increase = np.clip(post_spec - pre_spec, 0, None)
+    freqs, increase = result
     total = increase.sum()
-    if total <= 0:
-        return None
 
     centroid = float(np.sum(freqs * increase) / total)
     bandwidth = float(np.sqrt(np.sum(increase * (freqs - centroid) ** 2) / total))
@@ -136,6 +162,141 @@ def _increase_spectrum(
     flatness = float(geo_mean / arith_mean)
 
     return centroid, rolloff85, bandwidth, flatness
+
+
+def spectrum_curve(
+    path: str | Path,
+    sr: int = 22050,
+    spectral_window_s: float = 3.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return `(freqs, spectrum)` -- one clip's raw post-onset average spectrum.
+
+    This is the same window `analyze_clip`'s spectral_centroid_hz etc. are
+    computed from -- `[onset, onset + spectral_window_s)` -- but returns
+    the actual per-bin shape instead of a centroid/rolloff/bandwidth/
+    flatness summary. Unlike `increase_spectrum_curve`, this is the raw
+    window, not a difference against a pre-onset baseline: it still
+    includes whatever ambient audio (commentary, an already-ongoing chant)
+    was present in that window.
+    """
+    path = Path(path)
+    onset_marked_time_s = _load_onset_mark(path)
+    if onset_marked_time_s is None:
+        raise MissingMarkError(
+            f"{path.name} has no onset mark. Add onset_marked_time_s to "
+            f"{path.with_suffix('.mark.json').name}."
+        )
+    y, _sr = librosa.load(path, sr=sr, mono=True)
+    win_start = onset_marked_time_s
+    win_end = onset_marked_time_s + spectral_window_s
+    s_idx = int(win_start * sr)
+    e_idx = min(len(y), int(win_end * sr))
+    y_win = y[s_idx:e_idx]
+
+    S = np.abs(librosa.stft(y_win, n_fft=2048, hop_length=512))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
+    return freqs, S.mean(axis=1)
+
+
+def formant_envelope_curve(
+    path: str | Path,
+    sr: int = 22050,
+    spectral_window_s: float = 3.0,
+    order: int = 10,
+    max_formant_hz: float = 5500.0,
+    frame_length_s: float = 0.025,
+    hop_length_s: float = 0.01,
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """Return `(freqs, envelope)` -- the LPC spectral envelope underlying F1/F2.
+
+    `_formants` (F1/F2) picks peaks off this kind of envelope, frame by
+    frame via Praat/parselmouth's Burg-method tracker, then reduces the
+    result to a per-clip median. This instead returns the *envelope
+    itself*, averaged across frames of the post-onset window -- so the
+    resonance shape can be inspected or plotted directly, the same way
+    `spectrum_curve`/`increase_spectrum_curve` expose the FFT spectrum
+    shape.
+
+    Computed independently of `_formants` via librosa's own Burg-method
+    LPC rather than reusing parselmouth, so this approximates -- but
+    isn't guaranteed bit-identical to -- what actually produced F1/F2.
+    Audio is resampled to `2 * max_formant_hz` before LPC (mirroring
+    Praat's own downsampling, since a formant above the Nyquist rate
+    can't be estimated), and each frame gets a light pre-emphasis (0.97)
+    to roughly match Praat's `pre_emphasis_from` boost -- without it, the
+    LPC fit is dominated by low-frequency crowd rumble instead of the
+    formant structure.
+
+    Returns `None` if the post-onset window is too short to yield a
+    single analysis frame.
+    """
+    path = Path(path)
+    onset_marked_time_s = _load_onset_mark(path)
+    if onset_marked_time_s is None:
+        raise MissingMarkError(
+            f"{path.name} has no onset mark. Add onset_marked_time_s to "
+            f"{path.with_suffix('.mark.json').name}."
+        )
+    y, _sr = librosa.load(path, sr=sr, mono=True)
+    win_start = onset_marked_time_s
+    win_end = onset_marked_time_s + spectral_window_s
+    s_idx = int(win_start * sr)
+    e_idx = min(len(y), int(win_end * sr))
+    y_win = y[s_idx:e_idx]
+
+    sr_lpc = int(2 * max_formant_hz)
+    y_lpc = librosa.resample(y_win, orig_sr=sr, target_sr=sr_lpc)
+
+    frame_length = int(frame_length_s * sr_lpc)
+    hop_length = int(hop_length_s * sr_lpc)
+    if len(y_lpc) < frame_length:
+        return None
+
+    n_freqs = 512
+    freqs = np.linspace(0, sr_lpc / 2, n_freqs)
+    window = scipy.signal.windows.hamming(frame_length)
+
+    responses = []
+    for start in range(0, len(y_lpc) - frame_length + 1, hop_length):
+        frame = y_lpc[start:start + frame_length] * window
+        frame = np.append(frame[0], frame[1:] - 0.97 * frame[:-1])
+        try:
+            a = librosa.lpc(frame, order=order)
+        except (librosa.util.exceptions.ParameterError, np.linalg.LinAlgError):
+            continue
+        _, h = scipy.signal.freqz([1.0], a, worN=freqs, fs=sr_lpc)
+        responses.append(np.abs(h))
+
+    if not responses:
+        return None
+    return freqs, np.mean(responses, axis=0)
+
+
+def increase_spectrum_curve(
+    path: str | Path,
+    sr: int = 22050,
+    increase_window_s: float = 2.0,
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """Return `(freqs, increase)` -- one clip's onset-anchored difference-spectrum shape.
+
+    Same computation as the increase_* scalar fields in `analyze_clip`,
+    but returns the actual per-bin shape instead of reducing it to a
+    centroid/rolloff/bandwidth/flatness summary, for plotting (see
+    `plotting.plot_increase_spectrum_overlay`) or other direct inspection.
+    Raises `MissingMarkError` if `path` has no onset mark; returns `None`
+    under the same conditions as `_increase_spectrum_array`.
+    """
+    path = Path(path)
+    onset_marked_time_s = _load_onset_mark(path)
+    if onset_marked_time_s is None:
+        raise MissingMarkError(
+            f"{path.name} has no onset mark. Add onset_marked_time_s to "
+            f"{path.with_suffix('.mark.json').name}."
+        )
+    y, _sr = librosa.load(path, sr=sr, mono=True)
+    return _increase_spectrum_array(
+        y, sr, onset_marked_time_s, -increase_window_s, 0.0, 0.0, increase_window_s
+    )
 
 
 def _relative_window(y: np.ndarray, sr: int, anchor_time: float, start_s: float, end_s: float) -> Optional[np.ndarray]:
