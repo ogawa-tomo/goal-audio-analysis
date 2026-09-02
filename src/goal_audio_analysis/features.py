@@ -21,10 +21,7 @@ class MissingMarkError(ValueError):
 @dataclass
 class ClipFeatures:
     file: str
-    peak_time_s: float
     onset_time_s: float
-    attack_time_s: float
-    decay_time_s: Optional[float]
     spectral_centroid_hz: float
     spectral_rolloff85_hz: float
     spectral_bandwidth_hz: float
@@ -46,55 +43,28 @@ class ClipFeatures:
         return asdict(self)
 
 
-def _load_human_mark(path: Path) -> Optional[float]:
-    """Load `human_marked_time_s` from `<path>`'s sidecar `.mark.json`, if any.
-
-    Produced by `scripts/mark_goal_moment.py`: a human listens to the clip
-    (rewinding/re-checking as needed via a precise playback tool) and
-    reports the exact moment of the target event (e.g. the goal). This
-    value is used as-is, verbatim, as the analysis anchor -- there is no
-    algorithmic peak detection to fall back on or cross-check against.
-
-    An earlier design tried to have the algorithm find the moment itself
-    (a single loudest point, then several candidate peaks for a human to
-    choose from). Both were dropped after repeatedly finding real clips
-    where the correct moment was not the loudest point in the clip, and
-    was not even among the algorithm's own candidate peaks (a goal
-    celebration that builds to a sustained plateau rather than a sharp
-    peak has no standout instant for an amplitude-based detector to find).
-    A careful, verified human read of the clip is the only mechanism this
-    project found that reliably gets it right.
-    """
-    mark_path = path.with_suffix(".mark.json")
-    if not mark_path.exists():
-        return None
-    try:
-        data = json.loads(mark_path.read_text(encoding="utf-8"))
-        return float(data["human_marked_time_s"])
-    except (json.JSONDecodeError, KeyError, ValueError, OSError):
-        return None
-
-
 def _load_onset_mark(path: Path) -> Optional[float]:
     """Load `onset_marked_time_s` from `<path>`'s sidecar `.mark.json`, if any.
 
-    This is a second, distinct anchor from `human_marked_time_s`: the
-    moment the crowd's reaction *starts rising*, as opposed to the moment
-    it *feels loudest*. The two are typically a few tenths of a second
-    apart, not interchangeable -- attack/decay time is defined relative to
-    the amplitude peak and needs `human_marked_time_s`, but a window meant
-    to describe (or compare before/after) the reaction's own character
-    should start at the onset, not the peak, or it risks including
-    pre-reaction ambient audio (commentary, an already-ongoing chant)
-    on the "reaction" side of the boundary.
+    The moment the crowd's reaction *starts rising*, human-confirmed --
+    everything in `analyze_clip` is anchored on this. An earlier design
+    also used a separate amplitude-peak anchor (`human_marked_time_s`) for
+    an attack/decay-time pair (rise/fall speed relative to the loudest
+    instant), but both were dropped: for continuously-loud crowd audio, the
+    10%/50%-of-peak thresholds they were defined against frequently never
+    occurred within the clip at all (decay_time_s came back null for 14 of
+    17 clips in this project's dataset) or only at a degenerate point
+    (the very start of the recording), making the whole measurement
+    meaningless on this kind of data -- not just noisy. Since attack/decay
+    speed wasn't the object of interest here anyway (this project compares
+    the reaction's spectral *character*, not its temporal dynamics), the
+    fix was to drop the metric and the peak anchor it depended on, not to
+    patch the threshold logic.
 
-    Values here were obtained by taking the spectral-shape-change
+    Onset values here were obtained by taking the spectral-shape-change
     candidate (see the onset-detection experiments in this project's
-    history) nearest to each clip's existing peak mark, then confirming
-    by ear and by inspecting the candidate/mark plot for all 17 clips --
-    not from a separate free-form human pass the way `human_marked_time_s`
-    was. Both anchors are still explicit, recorded values, not
-    recomputed silently at analysis time.
+    history) nearest to each clip's now-removed peak mark, then confirming
+    by ear and by inspecting the candidate/mark plot for all 17 clips.
     """
     mark_path = path.with_suffix(".mark.json")
     if not mark_path.exists():
@@ -104,25 +74,6 @@ def _load_onset_mark(path: Path) -> Optional[float]:
         return float(data["onset_marked_time_s"])
     except (json.JSONDecodeError, KeyError, ValueError, OSError):
         return None
-
-
-def _nearest_index(times: np.ndarray, t: float) -> int:
-    return int(np.argmin(np.abs(times - t)))
-
-
-def _attack_decay(rms: np.ndarray, times: np.ndarray, peak_idx: int, peak_rms: float) -> tuple[float, Optional[float]]:
-    thresh = 0.1 * peak_rms
-    pre = rms[: peak_idx + 1]
-    above = np.where(pre >= thresh)[0]
-    attack_start_idx = int(above[0]) if len(above) else 0
-    attack_time = float(times[peak_idx] - times[attack_start_idx])
-
-    half = 0.5 * peak_rms
-    post = rms[peak_idx:]
-    below = np.where(post <= half)[0]
-    decay_time = float(times[peak_idx + below[0]] - times[peak_idx]) if len(below) else None
-
-    return attack_time, decay_time
 
 
 def _increase_spectrum(
@@ -209,18 +160,15 @@ def analyze_clip(
 ) -> ClipFeatures:
     """Extract acoustic features from one audio clip.
 
-    Requires two human-confirmed anchors in `<clip>.mark.json` --
-    `human_marked_time_s` (the amplitude peak) and `onset_marked_time_s`
-    (where the reaction starts rising) -- raises `MissingMarkError` if
-    either is missing. There is no algorithmic fallback: see
-    `_load_human_mark`/`_load_onset_mark` for why.
+    Requires a human-confirmed onset mark (`onset_marked_time_s`) in
+    `<clip>.mark.json` -- where the reaction starts rising -- raises
+    `MissingMarkError` if missing. There is no algorithmic fallback: see
+    `_load_onset_mark` for why.
 
-    Attack/decay time is computed relative to the peak (it's defined in
-    terms of the peak amplitude, so it needs that anchor specifically).
-    Everything else that describes or compares the reaction's *character*
-    -- the plain spectral_*/zero_crossing_rate fields, and the
-    increase_*/zero_crossing_rate_pre/_delta before/after comparisons --
-    is anchored on the onset instead, so no pre-reaction ambient audio
+    Everything here describes or compares the reaction's spectral
+    *character*: the plain spectral_*/zero_crossing_rate fields, and the
+    increase_*/zero_crossing_rate_pre/_delta before/after comparisons.
+    All are anchored on the onset, so no pre-reaction ambient audio
     (commentary, an already-ongoing chant) ends up on the "reaction" side
     of any window. The plain spectral_* window is `[onset,
     onset + spectral_window_s)`; the before/after comparisons split
@@ -229,30 +177,15 @@ def analyze_clip(
     """
     path = Path(path)
 
-    human_marked_time_s = _load_human_mark(path)
-    if human_marked_time_s is None:
-        raise MissingMarkError(
-            f"{path.name} has no goal-moment (peak) mark. Run "
-            f"`python scripts/mark_goal_moment.py {path}` first."
-        )
-    peak_time = human_marked_time_s
-
     onset_marked_time_s = _load_onset_mark(path)
     if onset_marked_time_s is None:
         raise MissingMarkError(
-            f"{path.name} has no onset mark (onset_marked_time_s missing from "
-            f"{path.with_suffix('.mark.json').name})."
+            f"{path.name} has no onset mark. Add onset_marked_time_s to "
+            f"{path.with_suffix('.mark.json').name}."
         )
     onset_time = onset_marked_time_s
 
     y, _sr = librosa.load(path, sr=sr, mono=True)
-
-    rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
-    times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=512)
-
-    peak_idx = _nearest_index(times, peak_time)
-    peak_rms = float(rms[peak_idx])
-    attack_time, decay_time = _attack_decay(rms, times, peak_idx, peak_rms)
 
     win_start = onset_time
     win_end = onset_time + spectral_window_s
@@ -296,10 +229,7 @@ def analyze_clip(
 
     return ClipFeatures(
         file=path.name,
-        peak_time_s=round(peak_time, 2),
         onset_time_s=round(onset_time, 2),
-        attack_time_s=round(attack_time, 3),
-        decay_time_s=round(decay_time, 3) if decay_time is not None else None,
         spectral_centroid_hz=round(float(np.mean(centroid)), 1),
         spectral_rolloff85_hz=round(float(np.mean(rolloff)), 1),
         spectral_bandwidth_hz=round(float(np.mean(bandwidth)), 1),

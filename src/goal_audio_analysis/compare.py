@@ -13,7 +13,6 @@ import numpy as np
 from scipy import stats
 
 DEFAULT_METRICS = [
-    "attack_time_s",
     "spectral_centroid_hz",
     "spectral_rolloff85_hz",
     "spectral_bandwidth_hz",

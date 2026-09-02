@@ -1,10 +1,7 @@
 [
   {
     "file": "ucl_pl_arsenal2_lb.wav",
-    "peak_time_s": 3.8,
     "onset_time_s": 3.4,
-    "attack_time_s": 3.39,
-    "decay_time_s": null,
     "spectral_centroid_hz": 2160.2,
     "spectral_rolloff85_hz": 3800.8,
     "spectral_bandwidth_hz": 1724.2,
@@ -24,10 +21,7 @@
   },
   {
     "file": "ucl_pl_arsenal_lb.wav",
-    "peak_time_s": 4.7,
     "onset_time_s": 4.5,
-    "attack_time_s": 4.319,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1876.7,
     "spectral_rolloff85_hz": 3322.9,
     "spectral_bandwidth_hz": 1584.4,
@@ -47,10 +41,7 @@
   },
   {
     "file": "ucl_pl_chelsea_lb.wav",
-    "peak_time_s": 5.5,
     "onset_time_s": 5.5,
-    "attack_time_s": 5.085,
-    "decay_time_s": null,
     "spectral_centroid_hz": 2093.5,
     "spectral_rolloff85_hz": 3420.8,
     "spectral_bandwidth_hz": 1516.0,
@@ -70,10 +61,7 @@
   },
   {
     "file": "ucl_pl_liverpool1_lb.wav",
-    "peak_time_s": 3.5,
     "onset_time_s": 3.25,
-    "attack_time_s": 3.437,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1823.7,
     "spectral_rolloff85_hz": 2952.9,
     "spectral_bandwidth_hz": 1439.0,
@@ -93,10 +81,7 @@
   },
   {
     "file": "ucl_pl_liverpool2_lb.wav",
-    "peak_time_s": 5.0,
     "onset_time_s": 4.95,
-    "attack_time_s": 4.76,
-    "decay_time_s": 8.638,
     "spectral_centroid_hz": 2034.0,
     "spectral_rolloff85_hz": 3345.4,
     "spectral_bandwidth_hz": 1608.2,
@@ -116,10 +101,7 @@
   },
   {
     "file": "ucl_pl_mancity_lb.wav",
-    "peak_time_s": 5.0,
     "onset_time_s": 4.95,
-    "attack_time_s": 4.621,
-    "decay_time_s": 7.918,
     "spectral_centroid_hz": 2013.9,
     "spectral_rolloff85_hz": 3447.3,
     "spectral_bandwidth_hz": 1670.3,
@@ -139,10 +121,7 @@
   },
   {
     "file": "ucl_pl_newcastle2_lb.wav",
-    "peak_time_s": 5.5,
     "onset_time_s": 5.25,
-    "attack_time_s": 5.132,
-    "decay_time_s": null,
     "spectral_centroid_hz": 2023.3,
     "spectral_rolloff85_hz": 3536.6,
     "spectral_bandwidth_hz": 1710.7,
@@ -162,10 +141,7 @@
   },
   {
     "file": "ucl_pl_newcastle_lb.wav",
-    "peak_time_s": 3.8,
     "onset_time_s": 3.7,
-    "attack_time_s": 2.74,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1997.1,
     "spectral_rolloff85_hz": 3320.8,
     "spectral_bandwidth_hz": 1626.5,
@@ -185,10 +161,7 @@
   },
   {
     "file": "ucl_pl_tottenham_lb.wav",
-    "peak_time_s": 4.9,
     "onset_time_s": 4.65,
-    "attack_time_s": 4.574,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1970.1,
     "spectral_rolloff85_hz": 3263.0,
     "spectral_bandwidth_hz": 1571.7,

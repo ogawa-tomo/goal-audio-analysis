@@ -1,10 +1,7 @@
 [
   {
     "file": "ucl_laliga_athleticclub2_lb.wav",
-    "peak_time_s": 5.6,
     "onset_time_s": 5.1,
-    "attack_time_s": 5.341,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1533.5,
     "spectral_rolloff85_hz": 2603.0,
     "spectral_bandwidth_hz": 1368.5,
@@ -24,10 +21,7 @@
   },
   {
     "file": "ucl_laliga_athleticclub_lb.wav",
-    "peak_time_s": 5.1,
     "onset_time_s": 5.0,
-    "attack_time_s": 4.644,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1553.6,
     "spectral_rolloff85_hz": 2657.7,
     "spectral_bandwidth_hz": 1396.3,
@@ -47,10 +41,7 @@
   },
   {
     "file": "ucl_laliga_atletico1_lb.wav",
-    "peak_time_s": 5.3,
     "onset_time_s": 5.1,
-    "attack_time_s": 4.876,
-    "decay_time_s": 7.709,
     "spectral_centroid_hz": 1318.8,
     "spectral_rolloff85_hz": 2175.9,
     "spectral_bandwidth_hz": 1146.0,
@@ -70,10 +61,7 @@
   },
   {
     "file": "ucl_laliga_atletico2_lb.wav",
-    "peak_time_s": 5.6,
     "onset_time_s": 5.5,
-    "attack_time_s": 5.317,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1583.6,
     "spectral_rolloff85_hz": 2675.0,
     "spectral_bandwidth_hz": 1337.2,
@@ -93,10 +81,7 @@
   },
   {
     "file": "ucl_laliga_barcelona_lb.wav",
-    "peak_time_s": 5.0,
     "onset_time_s": 4.4,
-    "attack_time_s": 4.598,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1693.8,
     "spectral_rolloff85_hz": 2842.4,
     "spectral_bandwidth_hz": 1437.3,
@@ -116,10 +101,7 @@
   },
   {
     "file": "ucl_laliga_realmadrid2_lb.wav",
-    "peak_time_s": 4.5,
     "onset_time_s": 4.15,
-    "attack_time_s": 4.226,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1646.1,
     "spectral_rolloff85_hz": 2730.8,
     "spectral_bandwidth_hz": 1377.2,
@@ -139,10 +121,7 @@
   },
   {
     "file": "ucl_laliga_realmadrid3_lb.wav",
-    "peak_time_s": 2.5,
     "onset_time_s": 2.35,
-    "attack_time_s": 2.508,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1563.1,
     "spectral_rolloff85_hz": 2593.8,
     "spectral_bandwidth_hz": 1302.0,
@@ -162,10 +141,7 @@
   },
   {
     "file": "ucl_laliga_realmadrid_lb.wav",
-    "peak_time_s": 4.7,
     "onset_time_s": 4.45,
-    "attack_time_s": 4.412,
-    "decay_time_s": null,
     "spectral_centroid_hz": 1618.7,
     "spectral_rolloff85_hz": 2733.1,
     "spectral_bandwidth_hz": 1359.2,

@@ -17,7 +17,6 @@ from pathlib import Path
 from . import extract, features, compare, plotting
 
 DEFAULT_BAR_METRICS = [
-    ("attack_time_s", "Attack time (s)"),
     ("spectral_centroid_hz", "Spectral centroid (Hz)"),
     ("spectral_rolloff85_hz", "Rolloff 85% (Hz)"),
     ("spectral_bandwidth_hz", "Bandwidth (Hz)"),
