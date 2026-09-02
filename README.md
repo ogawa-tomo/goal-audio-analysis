@@ -5,12 +5,13 @@
 - **`features.py`**: 1クリップの音声から音響特徴量(スペクトル重心・ロールオフ・帯域幅・
   平坦度・ゼロ交差率・F0・フォルマントF1/F2、およびゴール前後の増分指標)を抽出する。基準点は
   サイドカーファイル(`<clip>.mark.json`)の`onset_marked_time_s`(歓声が盛り上がり始めた瞬間、
-  人間が確認)。**これを書き込む専用スクリプトはまだリポジトリに整備できていない**(詳細な
-  経緯・計算方法は`reports/premier_vs_laliga.md`の4.2節を参照)。マークされていないクリップは
-  解析できない(エラーになる)。以前は音量ピーク(`human_marked_time_s`、
-  `scripts/mark_goal_moment.py`で指定)を基準にした立ち上がり時間・減衰時間も算出していたが、
-  常に大きな音が続くクリップでは測定の前提自体が成立しないことが分かり、分析から除外した
-  (`reports/premier_vs_laliga.md`4.2節・7章参照)
+  人間が確認。`scripts/mark_onset_moment.py`で指定)。マークされていないクリップは解析できない
+  (エラーになる)。以前は音量ピーク(`human_marked_time_s`、`scripts/mark_goal_moment.py`で
+  指定)を基準にした立ち上がり時間・減衰時間も算出していたが、常に大きな音が続くクリップでは
+  測定の前提自体が成立しないことが分かり、分析から除外した(`reports/premier_vs_laliga.md`
+  4.2節・7章参照)
+- **`onset.py`**: `scripts/mark_onset_moment.py`が使う、立ち上がり瞬間の候補検出ロジック
+  (前後1秒ずつのスペクトル形状変化=コサイン距離を計算し、局所的な極大点を候補として列挙する)
 - **`compare.py`**: 特徴量(dictのリスト)を2群受け取り、Welchのt検定で比較する。音声処理には
   依存しないので、音声以外の2群比較にも流用できる
 - **`extract.py`**: `ffmpeg`を使ってローカルの音声ファイルからクリップを切り出す。**音声データ
@@ -56,8 +57,12 @@ pip install -e .
     (歓声が盛り上がり始めた瞬間)であり、`human_marked_time_s`は使われていない**(経緯:
     `reports/premier_vs_laliga.md`4.2節を参照。当初は音量ピーク=`human_marked_time_s`を
     基準にしていたが、後から立ち上がりの瞬間を基準にする設計に切り替えた)。
-    `onset_marked_time_s`を書き込む専用スクリプトはまだ整備できておらず、これが未整備なまま
-    だと解析できない(エラーになる)。
+    `onset_marked_time_s`は[`scripts/mark_onset_moment.py`](scripts/mark_onset_moment.py)で
+    指定する。`python scripts/mark_onset_moment.py <clip.wav>`とすると、スペクトル形状の
+    変化量から立ち上がり候補を検出して一覧表示するので、実際に聴いて確認したうえで
+    `--pick <番号>`で選ぶと`onset_marked_time_s`が保存される(候補がどれも正しくない
+    場合は`--time <秒数>`で自由に指定することもできる)。マークされていないクリップは
+    解析できない(エラーになる)。
 
     (**設計の経緯**: 音量が最大になる瞬間や、音量の変化が最も急な瞬間をアルゴリズムで自動検出
     する方式を何通りも試したが、いずれも実際のデータで「ゴール前のチャンスシーンへの反応の方が
@@ -115,10 +120,9 @@ pip install -e .
 # 2. ゴールタイムスタンプ(おおよその秒数でよい)を中心にクリップを切り出す
 goal-audio extract-clip data/raw/source.wav data/clips/goal1.wav 74
 
-# 3. ゴールの立ち上がりの瞬間を指定する。`goal-audio analyze`が実際に使うのは
-#    onset_marked_time_s であり、これを書き込む専用スクリプトはまだ無いため、
-#    現時点では <clip>.mark.json に手動で {"onset_marked_time_s": <秒数>} を
-#    追記する必要がある(reports/premier_vs_laliga.md 4.2節を参照)
+# 3. ゴールの立ち上がりの瞬間を指定する。候補を提示させ、聴いて確認してから選ぶ
+python scripts/mark_onset_moment.py data/clips/goal1.wav
+python scripts/mark_onset_moment.py data/clips/goal1.wav --pick 1
 # (他のクリップも同様に、1つずつマークする)
 
 # 4. 特徴量抽出(複数クリップまとめて。マークしていないクリップはスキップされる)
@@ -159,10 +163,10 @@ print(compare.format_table(comparisons))
 
 ## 既知の注意点
 
-- 解析の基準点(`onset_marked_time_s`)はマークされた時刻そのものであり、アルゴリズムによる
-  自動検出・補正は一切行わない。マークの精度がそのまま解析結果の精度になるため、慎重に
-  確認してから確定すること(`onset_marked_time_s`を書き込む専用スクリプトが未整備な現状の
-  詳細は上記「セットアップ」節・`reports/premier_vs_laliga.md`4.2節を参照)
+- 解析の基準点(`onset_marked_time_s`)は`scripts/mark_onset_moment.py`が提示する候補から
+  人間が選んだ時刻そのものであり、選んだ後にアルゴリズムによる自動補正は一切行わない。
+  候補は聴いて確認してから選ぶこと(候補検出ロジックの詳細は`onset.py`のdocstring・
+  `reports/premier_vs_laliga.md`4.2節を参照)
 - `loopback_record.py`は、録音バッファの取りこぼし(`soundcard`の"data discontinuity"警告)を
   検知して回数を表示する。警告が出た場合はクリップを目視確認(スペクトログラム等)するか、
   再録音を検討すること(クリック状のノイズが、マークすべき瞬間の判断を妨げることがある)
