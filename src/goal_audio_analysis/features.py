@@ -35,10 +35,7 @@ class ClipFeatures:
     voiced_fraction: float
     f1_median_hz: Optional[float] = None
     f2_median_hz: Optional[float] = None
-    increase_centroid_hz: Optional[float] = None
-    increase_rolloff85_hz: Optional[float] = None
-    increase_bandwidth_hz: Optional[float] = None
-    increase_flatness: Optional[float] = None
+    hnr_db: Optional[float] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -77,91 +74,23 @@ def _load_onset_mark(path: Path) -> Optional[float]:
         return None
 
 
-def _increase_spectrum_array(
-    y: np.ndarray,
-    sr: int,
-    anchor_time: float,
-    pre_start_s: float,
-    pre_end_s: float,
-    post_start_s: float,
-    post_end_s: float,
-) -> Optional[tuple[np.ndarray, np.ndarray]]:
-    """Compute the clipped-positive difference spectrum underlying `_increase_spectrum`.
+def _load_post_onset_window(path: Path, sr: int, spectral_window_s: float) -> np.ndarray:
+    """Load `path` and return its post-onset analysis window `[onset, onset + spectral_window_s)`.
 
-    Returns `(freqs, increase)` -- the per-frequency-bin energy present in
-    the post-anchor window but not the pre-anchor one -- or `None` if
-    either window is empty (e.g. `anchor_time` too close to the start of
-    the clip) or the post window isn't louder than the baseline anywhere.
-    Split out from `_increase_spectrum` so the actual shape can be
-    inspected directly (see `increase_spectrum_curve`) instead of only
-    its centroid/rolloff/bandwidth/flatness summary.
+    Shared by `spectrum_curve`/`formant_envelope_curve`/`hnr_curve`, which
+    each describe this same window from a different angle. Raises
+    `MissingMarkError` if `path` has no onset mark.
     """
-    S = np.abs(librosa.stft(y, n_fft=2048, hop_length=512))
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
-    times = librosa.frames_to_time(np.arange(S.shape[1]), sr=sr, hop_length=512)
-
-    pre_mask = (times >= max(0.0, anchor_time + pre_start_s)) & (times < max(0.0, anchor_time + pre_end_s))
-    post_mask = (times >= max(0.0, anchor_time + post_start_s)) & (times < anchor_time + post_end_s)
-    if pre_mask.sum() < 2 or post_mask.sum() < 2:
-        return None
-
-    pre_spec = S[:, pre_mask].mean(axis=1)
-    post_spec = S[:, post_mask].mean(axis=1)
-    increase = np.clip(post_spec - pre_spec, 0, None)
-    if increase.sum() <= 0:
-        return None
-    return freqs, increase
-
-
-def _increase_spectrum(
-    y: np.ndarray,
-    sr: int,
-    anchor_time: float,
-    pre_start_s: float,
-    pre_end_s: float,
-    post_start_s: float,
-    post_end_s: float,
-) -> Optional[tuple[float, float, float, float]]:
-    """Characterize what newly appeared in the audio around `anchor_time`.
-
-    Rather than describing the post-goal window's spectral content on its
-    own (what the other spectral_* fields do), this compares it against a
-    pre-goal baseline window and looks only at the *increase* -- energy
-    present after but not before -- per frequency bin. This isolates the
-    reaction itself from whatever ambient noise (commentary, an
-    already-ongoing chant, stadium acoustics) was already present before
-    the goal, which the raw post-goal window can't distinguish. Found to
-    show a substantially larger, still statistically significant
-    Premier-vs-LaLiga gap than the plain post-goal spectral centroid/
-    rolloff on this project's 17-clip dataset.
-
-    Returns `(centroid_hz, rolloff85_hz, bandwidth_hz, flatness)` computed
-    on the clipped-positive difference spectrum, or `None` under the same
-    conditions as `_increase_spectrum_array`.
-
-    `flatness` here leans low almost by construction: most frequency bins
-    have zero increase (post <= pre there), and a geometric mean is highly
-    sensitive to near-zero values. Treat it as a rough indicator of how
-    concentrated vs. spread the added energy is, not as directly
-    comparable to `spectral_flatness`.
-    """
-    result = _increase_spectrum_array(y, sr, anchor_time, pre_start_s, pre_end_s, post_start_s, post_end_s)
-    if result is None:
-        return None
-    freqs, increase = result
-    total = increase.sum()
-
-    centroid = float(np.sum(freqs * increase) / total)
-    bandwidth = float(np.sqrt(np.sum(increase * (freqs - centroid) ** 2) / total))
-    cumsum = np.cumsum(increase)
-    idx = int(np.searchsorted(cumsum, 0.85 * total))
-    rolloff85 = float(freqs[min(idx, len(freqs) - 1)])
-    eps = 1e-10
-    geo_mean = np.exp(np.mean(np.log(increase + eps)))
-    arith_mean = np.mean(increase) + eps
-    flatness = float(geo_mean / arith_mean)
-
-    return centroid, rolloff85, bandwidth, flatness
+    onset_marked_time_s = _load_onset_mark(path)
+    if onset_marked_time_s is None:
+        raise MissingMarkError(
+            f"{path.name} has no onset mark. Add onset_marked_time_s to "
+            f"{path.with_suffix('.mark.json').name}."
+        )
+    y, _sr = librosa.load(path, sr=sr, mono=True)
+    s_idx = int(onset_marked_time_s * sr)
+    e_idx = min(len(y), int((onset_marked_time_s + spectral_window_s) * sr))
+    return y[s_idx:e_idx]
 
 
 def spectrum_curve(
@@ -174,28 +103,47 @@ def spectrum_curve(
     This is the same window `analyze_clip`'s spectral_centroid_hz etc. are
     computed from -- `[onset, onset + spectral_window_s)` -- but returns
     the actual per-bin shape instead of a centroid/rolloff/bandwidth/
-    flatness summary. Unlike `increase_spectrum_curve`, this is the raw
-    window, not a difference against a pre-onset baseline: it still
-    includes whatever ambient audio (commentary, an already-ongoing chant)
-    was present in that window.
+    flatness summary.
     """
-    path = Path(path)
-    onset_marked_time_s = _load_onset_mark(path)
-    if onset_marked_time_s is None:
-        raise MissingMarkError(
-            f"{path.name} has no onset mark. Add onset_marked_time_s to "
-            f"{path.with_suffix('.mark.json').name}."
-        )
-    y, _sr = librosa.load(path, sr=sr, mono=True)
-    win_start = onset_marked_time_s
-    win_end = onset_marked_time_s + spectral_window_s
-    s_idx = int(win_start * sr)
-    e_idx = min(len(y), int(win_end * sr))
-    y_win = y[s_idx:e_idx]
+    y_win = _load_post_onset_window(Path(path), sr, spectral_window_s)
 
     S = np.abs(librosa.stft(y_win, n_fft=2048, hop_length=512))
     freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
     return freqs, S.mean(axis=1)
+
+
+def hnr_curve(
+    path: str | Path,
+    sr: int = 22050,
+    spectral_window_s: float = 3.0,
+    time_step: float = 0.01,
+) -> Optional[tuple[np.ndarray, np.ndarray]]:
+    """Return `(times, hnr_db)` -- one clip's HNR over time, within the post-onset window.
+
+    `hnr_db` (the scalar field in `analyze_clip`) is the median of this
+    same curve. Returned frame-by-frame here instead, since HNR -- unlike
+    the spectrum/envelope curves -- isn't defined per frequency: it's a
+    per-time-frame measure of periodicity from Praat's cross-correlation
+    method (see `_harmonicity`), so time is the only axis that makes
+    sense for it. `times` is seconds since the start of the post-onset
+    window (i.e. since the onset itself). Undefined frames (Praat's -200
+    sentinel) come back as `nan` here rather than being dropped, so gaps
+    in periodicity stay visible instead of silently vanishing.
+
+    Returns `None` if the window is too short to yield any frame.
+    """
+    import parselmouth
+
+    y_win = _load_post_onset_window(Path(path), sr, spectral_window_s)
+
+    snd = parselmouth.Sound(y_win, sampling_frequency=sr)
+    harmonicity = snd.to_harmonicity_cc(time_step=time_step)
+    times = harmonicity.xs()
+    if len(times) == 0:
+        return None
+    values = harmonicity.values.flatten()
+    values = np.where(values == -200.0, np.nan, values)
+    return times, values
 
 
 def formant_envelope_curve(
@@ -214,8 +162,7 @@ def formant_envelope_curve(
     result to a per-clip median. This instead returns the *envelope
     itself*, averaged across frames of the post-onset window -- so the
     resonance shape can be inspected or plotted directly, the same way
-    `spectrum_curve`/`increase_spectrum_curve` expose the FFT spectrum
-    shape.
+    `spectrum_curve` exposes the FFT spectrum shape.
 
     Computed independently of `_formants` via librosa's own Burg-method
     LPC rather than reusing parselmouth, so this approximates -- but
@@ -230,19 +177,7 @@ def formant_envelope_curve(
     Returns `None` if the post-onset window is too short to yield a
     single analysis frame.
     """
-    path = Path(path)
-    onset_marked_time_s = _load_onset_mark(path)
-    if onset_marked_time_s is None:
-        raise MissingMarkError(
-            f"{path.name} has no onset mark. Add onset_marked_time_s to "
-            f"{path.with_suffix('.mark.json').name}."
-        )
-    y, _sr = librosa.load(path, sr=sr, mono=True)
-    win_start = onset_marked_time_s
-    win_end = onset_marked_time_s + spectral_window_s
-    s_idx = int(win_start * sr)
-    e_idx = min(len(y), int(win_end * sr))
-    y_win = y[s_idx:e_idx]
+    y_win = _load_post_onset_window(Path(path), sr, spectral_window_s)
 
     sr_lpc = int(2 * max_formant_hz)
     y_lpc = librosa.resample(y_win, orig_sr=sr, target_sr=sr_lpc)
@@ -272,38 +207,11 @@ def formant_envelope_curve(
     return freqs, np.mean(responses, axis=0)
 
 
-def increase_spectrum_curve(
-    path: str | Path,
-    sr: int = 22050,
-    increase_window_s: float = 2.0,
-) -> Optional[tuple[np.ndarray, np.ndarray]]:
-    """Return `(freqs, increase)` -- one clip's onset-anchored difference-spectrum shape.
-
-    Same computation as the increase_* scalar fields in `analyze_clip`,
-    but returns the actual per-bin shape instead of reducing it to a
-    centroid/rolloff/bandwidth/flatness summary, for plotting (see
-    `plotting.plot_increase_spectrum_overlay`) or other direct inspection.
-    Raises `MissingMarkError` if `path` has no onset mark; returns `None`
-    under the same conditions as `_increase_spectrum_array`.
-    """
-    path = Path(path)
-    onset_marked_time_s = _load_onset_mark(path)
-    if onset_marked_time_s is None:
-        raise MissingMarkError(
-            f"{path.name} has no onset mark. Add onset_marked_time_s to "
-            f"{path.with_suffix('.mark.json').name}."
-        )
-    y, _sr = librosa.load(path, sr=sr, mono=True)
-    return _increase_spectrum_array(
-        y, sr, onset_marked_time_s, -increase_window_s, 0.0, 0.0, increase_window_s
-    )
-
-
 def _relative_window(y: np.ndarray, sr: int, anchor_time: float, start_s: float, end_s: float) -> Optional[np.ndarray]:
     """Slice out `[anchor_time + start_s, anchor_time + end_s)`, clamped to not start before 0.
 
-    Used for the pre/post-goal baseline windows shared by `_increase_spectrum`
-    and the zero_crossing_rate before/after delta.
+    Used for the pre/post-goal baseline windows behind the
+    zero_crossing_rate before/after delta.
     """
     w_s = max(0.0, anchor_time + start_s)
     w_e = max(0.0, anchor_time + end_s)
@@ -316,7 +224,7 @@ def analyze_clip(
     path: str | Path,
     sr: int = 22050,
     spectral_window_s: float = 3.0,
-    increase_window_s: float = 2.0,
+    zcr_window_s: float = 2.0,
     with_formants: bool = True,
 ) -> ClipFeatures:
     """Extract acoustic features from one audio clip.
@@ -326,15 +234,19 @@ def analyze_clip(
     `MissingMarkError` if missing. There is no algorithmic fallback: see
     `_load_onset_mark` for why.
 
-    Everything here describes or compares the reaction's spectral
-    *character*: the plain spectral_*/zero_crossing_rate fields, and the
-    increase_*/zero_crossing_rate_pre/_delta before/after comparisons.
-    All are anchored on the onset, so no pre-reaction ambient audio
-    (commentary, an already-ongoing chant) ends up on the "reaction" side
-    of any window. The plain spectral_* window is `[onset,
-    onset + spectral_window_s)`; the before/after comparisons split
-    exactly at the onset, `increase_window_s` on each side -- see
-    `_increase_spectrum`.
+    Everything here describes the post-onset reaction's spectral
+    *character* on its own terms -- the plain spectral_*/f0/f1/f2/hnr_db
+    fields, all computed over `[onset, onset + spectral_window_s)` -- plus
+    zero_crossing_rate_pre/_delta, which additionally compare that window
+    against `zcr_window_s` seconds immediately before the onset. An
+    earlier design also compared the *whole* post-onset spectrum against a
+    pre-onset baseline (increase_centroid_hz etc., an "increase spectrum")
+    to isolate the reaction from preexisting ambient audio (commentary, an
+    already-ongoing chant) -- dropped once the question of interest
+    shifted from "what did the goal add" to "what does the post-goal
+    crowd sound like", at which point that preexisting audio stopped being
+    a confound to remove and became part of what's being described. See
+    `reports/premier_vs_laliga.md` 4.5 section for the fuller history.
     """
     path = Path(path)
 
@@ -366,27 +278,18 @@ def analyze_clip(
     f0_voiced = f0[~np.isnan(f0)]
 
     zcr_post_val = float(np.mean(zcr))
-    y_pre = _relative_window(y, sr, onset_time, -increase_window_s, 0.0)
-    y_post_for_delta = _relative_window(y, sr, onset_time, 0.0, increase_window_s)
+    y_pre = _relative_window(y, sr, onset_time, -zcr_window_s, 0.0)
+    y_post_for_delta = _relative_window(y, sr, onset_time, 0.0, zcr_window_s)
     if y_pre is not None and len(y_pre) > 0 and y_post_for_delta is not None and len(y_post_for_delta) > 0:
         zcr_pre_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_pre)[0]))
         zcr_delta_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_post_for_delta)[0])) - zcr_pre_val
     else:
         zcr_pre_val = zcr_delta_val = None
 
-    increase = _increase_spectrum(
-        y, sr, onset_time,
-        -increase_window_s, 0.0,
-        0.0, increase_window_s,
-    )
-    if increase is not None:
-        inc_centroid, inc_rolloff85, inc_bandwidth, inc_flatness = increase
-    else:
-        inc_centroid = inc_rolloff85 = inc_bandwidth = inc_flatness = None
-
-    f1_median = f2_median = None
+    f1_median = f2_median = hnr_median = None
     if with_formants:
         f1_median, f2_median = _formants(y_win, sr)
+        hnr_median = _harmonicity(y_win, sr)
 
     return ClipFeatures(
         file=path.name,
@@ -403,10 +306,7 @@ def analyze_clip(
         voiced_fraction=round(float(np.mean(~np.isnan(f0))), 3),
         f1_median_hz=f1_median,
         f2_median_hz=f2_median,
-        increase_centroid_hz=round(inc_centroid, 1) if inc_centroid is not None else None,
-        increase_rolloff85_hz=round(inc_rolloff85, 1) if inc_rolloff85 is not None else None,
-        increase_bandwidth_hz=round(inc_bandwidth, 1) if inc_bandwidth is not None else None,
-        increase_flatness=round(inc_flatness, 6) if inc_flatness is not None else None,
+        hnr_db=hnr_median,
     )
 
 
@@ -440,6 +340,35 @@ def _formants(y_win: np.ndarray, sr: int) -> tuple[Optional[float], Optional[flo
     f1_median = round(float(np.median(f1_vals)), 1) if f1_vals else None
     f2_median = round(float(np.median(f2_vals)), 1) if f2_vals else None
     return f1_median, f2_median
+
+
+def _harmonicity(y_win: np.ndarray, sr: int) -> Optional[float]:
+    """Estimate median harmonics-to-noise ratio (HNR, dB) via Praat's cross-correlation method.
+
+    HNR measures how periodic/tonal a sound is versus how noise-like: a
+    high value means a strong, stable periodic component dominates (e.g.
+    a crowd chanting roughly in unison), a low or negative value means
+    broadband noise dominates (e.g. an unstructured roar with no shared
+    pitch). Like `_formants`, this treats the crowd as if it were one
+    periodic source, which is only an approximation -- but unlike F0, it
+    doesn't require pitch-tracking to succeed on a frame to produce a
+    value, so it stays defined even where `voiced_fraction` is low.
+
+    The cross-correlation method (`to_harmonicity_cc`) is used rather
+    than the autocorrelation one, per Praat's own guidance that cc is
+    more robust on noisy/non-speech signals. Undefined frames come back
+    from parselmouth as the sentinel value -200.0 and are excluded before
+    taking the median. Returns `None` if every frame is undefined.
+    """
+    import parselmouth
+
+    snd = parselmouth.Sound(y_win, sampling_frequency=sr)
+    harmonicity = snd.to_harmonicity_cc()
+    values = harmonicity.values.flatten()
+    values = values[values != -200.0]
+    if len(values) == 0:
+        return None
+    return round(float(np.median(values)), 2)
 
 
 def analyze_directory(dir_path: str | Path, pattern: str = "*.wav", **kwargs) -> list[ClipFeatures]:

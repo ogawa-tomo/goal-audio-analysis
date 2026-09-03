@@ -21,8 +21,7 @@ DEFAULT_BAR_METRICS = [
     ("spectral_rolloff85_hz", "Rolloff 85% (Hz)"),
     ("spectral_bandwidth_hz", "Bandwidth (Hz)"),
     ("f0_median_hz", "F0 median (Hz)"),
-    ("increase_centroid_hz", "Increase centroid (Hz)"),
-    ("increase_rolloff85_hz", "Increase rolloff 85% (Hz)"),
+    ("hnr_db", "HNR (dB)"),
     ("zero_crossing_rate_delta", "ZCR delta (post-pre)"),
 ]
 
@@ -94,15 +93,6 @@ def cmd_spectrum_plot(args):
 
     out_dir = Path(args.out_dir)
 
-    inc_a = load_curves(args.group_a, features.increase_spectrum_curve)
-    inc_b = load_curves(args.group_b, features.increase_spectrum_curve)
-    inc_out = out_dir / "increase_spectrum.png"
-    plotting.plot_increase_spectrum_overlay(
-        inc_a, inc_b, inc_out, args.label_a, args.label_b,
-        title=f"Increase spectrum shape: {args.label_a} vs {args.label_b}",
-    )
-    print(f"saved: {inc_out}")
-
     abs_a = load_curves(args.group_a, features.spectrum_curve)
     abs_b = load_curves(args.group_b, features.spectrum_curve)
     abs_out = out_dir / "spectrum_absolute.png"
@@ -120,6 +110,15 @@ def cmd_spectrum_plot(args):
         title=f"Formant (LPC) envelope shape: {args.label_a} vs {args.label_b}",
     )
     print(f"saved: {fmt_out}")
+
+    hnr_a = load_curves(args.group_a, features.hnr_curve)
+    hnr_b = load_curves(args.group_b, features.hnr_curve)
+    hnr_out = out_dir / "hnr_over_time.png"
+    plotting.plot_hnr_over_time_overlay(
+        hnr_a, hnr_b, hnr_out, args.label_a, args.label_b,
+        title=f"HNR over time: {args.label_a} vs {args.label_b}",
+    )
+    print(f"saved: {hnr_out}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -145,7 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("analyze", help="extract acoustic features from one or more clips")
     p.add_argument("clips", nargs="+")
     p.add_argument("-o", "--out", help="write JSON here instead of stdout")
-    p.add_argument("--no-formants", action="store_true", help="skip formant (F1/F2) analysis")
+    p.add_argument("--no-formants", action="store_true", help="skip Praat-based analysis (formants F1/F2, HNR)")
     p.set_defaults(func=cmd_analyze)
 
     p = sub.add_parser("compare", help="compare two groups of pre-computed features")
@@ -156,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--out-dir", help="directory to save comparison plots into")
     p.set_defaults(func=cmd_compare)
 
-    p = sub.add_parser("spectrum-plot", help="overlay each group's onset-anchored increase-spectrum shape")
+    p = sub.add_parser("spectrum-plot", help="overlay each group's post-onset spectrum/envelope/HNR shape")
     p.add_argument("--group-a", nargs="+", required=True, dest="group_a", help="clip wav paths for group A")
     p.add_argument("--group-b", nargs="+", required=True, dest="group_b", help="clip wav paths for group B")
     p.add_argument("--label-a", default="A")

@@ -23,10 +23,7 @@ DEFAULT_METRICS = [
     "f0_median_hz",
     "f1_median_hz",
     "f2_median_hz",
-    "increase_centroid_hz",
-    "increase_rolloff85_hz",
-    "increase_bandwidth_hz",
-    "increase_flatness",
+    "hnr_db",
 ]
 
 

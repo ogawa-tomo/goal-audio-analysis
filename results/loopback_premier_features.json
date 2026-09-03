@@ -14,10 +14,7 @@
     "voiced_fraction": 0.862,
     "f1_median_hz": 936.6,
     "f2_median_hz": 1771.2,
-    "increase_centroid_hz": 2031.3,
-    "increase_rolloff85_hz": 3369.9,
-    "increase_bandwidth_hz": 1684.0,
-    "increase_flatness": 0.047877
+    "hnr_db": -1.39
   },
   {
     "file": "ucl_pl_arsenal_lb.wav",
@@ -34,10 +31,7 @@
     "voiced_fraction": 0.892,
     "f1_median_hz": 916.9,
     "f2_median_hz": 1681.3,
-    "increase_centroid_hz": 1822.4,
-    "increase_rolloff85_hz": 3003.9,
-    "increase_bandwidth_hz": 1325.1,
-    "increase_flatness": 0.011288
+    "hnr_db": -0.91
   },
   {
     "file": "ucl_pl_chelsea_lb.wav",
@@ -54,10 +48,7 @@
     "voiced_fraction": 0.9,
     "f1_median_hz": 1017.0,
     "f2_median_hz": 1788.4,
-    "increase_centroid_hz": 1970.5,
-    "increase_rolloff85_hz": 2713.2,
-    "increase_bandwidth_hz": 849.4,
-    "increase_flatness": 6e-06
+    "hnr_db": -2.32
   },
   {
     "file": "ucl_pl_liverpool1_lb.wav",
@@ -74,10 +65,7 @@
     "voiced_fraction": 0.692,
     "f1_median_hz": 921.8,
     "f2_median_hz": 1710.3,
-    "increase_centroid_hz": 1982.7,
-    "increase_rolloff85_hz": 3057.7,
-    "increase_bandwidth_hz": 1351.7,
-    "increase_flatness": 0.059744
+    "hnr_db": -1.83
   },
   {
     "file": "ucl_pl_liverpool2_lb.wav",
@@ -94,10 +82,7 @@
     "voiced_fraction": 0.154,
     "f1_median_hz": 982.2,
     "f2_median_hz": 1723.7,
-    "increase_centroid_hz": 2027.3,
-    "increase_rolloff85_hz": 3003.9,
-    "increase_bandwidth_hz": 1228.8,
-    "increase_flatness": 0.009897
+    "hnr_db": -2.71
   },
   {
     "file": "ucl_pl_mancity_lb.wav",
@@ -114,10 +99,7 @@
     "voiced_fraction": 0.923,
     "f1_median_hz": 898.5,
     "f2_median_hz": 1718.0,
-    "increase_centroid_hz": 1461.6,
-    "increase_rolloff85_hz": 1991.8,
-    "increase_bandwidth_hz": 629.5,
-    "increase_flatness": 1e-06
+    "hnr_db": -1.43
   },
   {
     "file": "ucl_pl_newcastle2_lb.wav",
@@ -134,10 +116,7 @@
     "voiced_fraction": 0.862,
     "f1_median_hz": 907.4,
     "f2_median_hz": 1716.8,
-    "increase_centroid_hz": 2499.3,
-    "increase_rolloff85_hz": 4166.7,
-    "increase_bandwidth_hz": 1821.0,
-    "increase_flatness": 0.051265
+    "hnr_db": -0.76
   },
   {
     "file": "ucl_pl_newcastle_lb.wav",
@@ -154,10 +133,7 @@
     "voiced_fraction": 0.946,
     "f1_median_hz": 939.2,
     "f2_median_hz": 1731.5,
-    "increase_centroid_hz": 1875.9,
-    "increase_rolloff85_hz": 2863.9,
-    "increase_bandwidth_hz": 1247.2,
-    "increase_flatness": 0.014337
+    "hnr_db": -1.37
   },
   {
     "file": "ucl_pl_tottenham_lb.wav",
@@ -174,9 +150,6 @@
     "voiced_fraction": 0.838,
     "f1_median_hz": 938.8,
     "f2_median_hz": 1742.0,
-    "increase_centroid_hz": 2377.3,
-    "increase_rolloff85_hz": 4026.7,
-    "increase_bandwidth_hz": 1843.3,
-    "increase_flatness": 0.092558
+    "hnr_db": -1.9
   }
 ]

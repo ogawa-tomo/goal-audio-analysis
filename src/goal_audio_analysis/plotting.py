@@ -75,7 +75,7 @@ def _plot_curve_overlay(
     title: str,
     ylabel: str,
 ) -> Path:
-    """Shared implementation for `plot_increase_spectrum_overlay`/`plot_spectrum_overlay`.
+    """Shared implementation for `plot_spectrum_overlay`/`plot_formant_envelope_overlay`.
 
     Each clip's curve is normalized to sum to 1 before averaging, so the
     plot compares *shape* rather than raw loudness -- keeping per-
@@ -110,29 +110,6 @@ def _plot_curve_overlay(
     plt.savefig(out_path, dpi=150)
     plt.close(fig)
     return out_path
-
-
-def plot_increase_spectrum_overlay(
-    curves_a: list[tuple[np.ndarray, np.ndarray]],
-    curves_b: list[tuple[np.ndarray, np.ndarray]],
-    out_path: str | Path,
-    label_a: str = "A",
-    label_b: str = "B",
-    freq_max_hz: float = 6000.0,
-    title: str = "Increase spectrum shape (onset-anchored)",
-) -> Path:
-    """Overlay each group's per-clip increase-spectrum shape plus the group mean.
-
-    `curves_a`/`curves_b` are lists of `(freqs, increase)` pairs, e.g. from
-    `features.increase_spectrum_curve` -- the onset-anchored difference
-    (post-onset minus pre-onset window, negative values clipped to 0), so
-    this isolates newly-added energy from whatever ambient audio was
-    already present before the onset.
-    """
-    return _plot_curve_overlay(
-        curves_a, curves_b, out_path, label_a, label_b, freq_max_hz, title,
-        ylabel="Normalized increase (shape, arbitrary units)",
-    )
 
 
 def plot_spectrum_overlay(
@@ -178,6 +155,51 @@ def plot_formant_envelope_overlay(
         curves_a, curves_b, out_path, label_a, label_b, freq_max_hz, title,
         ylabel="Normalized LPC envelope (shape, arbitrary units)",
     )
+
+
+def plot_hnr_over_time_overlay(
+    curves_a: list[tuple[np.ndarray, np.ndarray]],
+    curves_b: list[tuple[np.ndarray, np.ndarray]],
+    out_path: str | Path,
+    label_a: str = "A",
+    label_b: str = "B",
+    title: str = "HNR over time (post-onset window)",
+) -> Path:
+    """Overlay each group's HNR-over-time curve plus the group mean.
+
+    `curves_a`/`curves_b` are lists of `(times, hnr_db)` pairs, e.g. from
+    `features.hnr_curve`. Unlike the frequency-axis overlays above,
+    curves are NOT normalized before averaging: HNR is already a dB
+    ratio, roughly independent of recording gain, so raw values are
+    directly comparable across clips. The group mean is computed with
+    `nanmean`, truncated to the shortest clip's length in that group, and
+    ignores individual undefined (NaN) frames.
+    """
+    fig, ax = plt.subplots(figsize=(9, 6))
+
+    for curves, label, color in [(curves_a, label_a, DEFAULT_COLOR_A), (curves_b, label_b, DEFAULT_COLOR_B)]:
+        for times, values in curves:
+            ax.plot(times, values, color=color, alpha=0.25, linewidth=1)
+        if curves:
+            min_len = min(len(t) for t, _ in curves)
+            stacked = np.array([v[:min_len] for _, v in curves])
+            times_ref = curves[0][0][:min_len]
+            mean_curve = np.nanmean(stacked, axis=0)
+            ax.plot(times_ref, mean_curve, color=color, linewidth=2.5,
+                    label=f"{label} (mean, n={len(curves)})")
+
+    ax.set_xlabel("Time since onset (s)")
+    ax.set_ylabel("HNR (dB)")
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(alpha=0.3)
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return out_path
 
 
 def plot_formant_chart(

@@ -14,10 +14,7 @@
     "voiced_fraction": 0.862,
     "f1_median_hz": 869.4,
     "f2_median_hz": 1471.6,
-    "increase_centroid_hz": 1661.9,
-    "increase_rolloff85_hz": 2874.7,
-    "increase_bandwidth_hz": 1502.7,
-    "increase_flatness": 0.015678
+    "hnr_db": -0.48
   },
   {
     "file": "ucl_laliga_athleticclub_lb.wav",
@@ -34,10 +31,7 @@
     "voiced_fraction": 0.892,
     "f1_median_hz": 868.5,
     "f2_median_hz": 1471.9,
-    "increase_centroid_hz": 1381.8,
-    "increase_rolloff85_hz": 1345.8,
-    "increase_bandwidth_hz": 1360.5,
-    "increase_flatness": 0.002431
+    "hnr_db": -0.46
   },
   {
     "file": "ucl_laliga_atletico1_lb.wav",
@@ -54,10 +48,7 @@
     "voiced_fraction": 0.815,
     "f1_median_hz": 823.2,
     "f2_median_hz": 1431.7,
-    "increase_centroid_hz": 964.5,
-    "increase_rolloff85_hz": 1055.1,
-    "increase_bandwidth_hz": 779.4,
-    "increase_flatness": 1e-05
+    "hnr_db": 0.5
   },
   {
     "file": "ucl_laliga_atletico2_lb.wav",
@@ -74,10 +65,7 @@
     "voiced_fraction": 0.769,
     "f1_median_hz": 884.4,
     "f2_median_hz": 1491.8,
-    "increase_centroid_hz": 952.8,
-    "increase_rolloff85_hz": 1076.7,
-    "increase_bandwidth_hz": 620.4,
-    "increase_flatness": 0.0
+    "hnr_db": -0.15
   },
   {
     "file": "ucl_laliga_barcelona_lb.wav",
@@ -94,10 +82,7 @@
     "voiced_fraction": 0.969,
     "f1_median_hz": 878.9,
     "f2_median_hz": 1577.5,
-    "increase_centroid_hz": 1739.7,
-    "increase_rolloff85_hz": 2820.8,
-    "increase_bandwidth_hz": 1436.2,
-    "increase_flatness": 0.057159
+    "hnr_db": 0.03
   },
   {
     "file": "ucl_laliga_realmadrid2_lb.wav",
@@ -114,10 +99,7 @@
     "voiced_fraction": 0.412,
     "f1_median_hz": 927.7,
     "f2_median_hz": 1514.4,
-    "increase_centroid_hz": 1214.1,
-    "increase_rolloff85_hz": 1378.1,
-    "increase_bandwidth_hz": 687.7,
-    "increase_flatness": 2e-06
+    "hnr_db": -0.98
   },
   {
     "file": "ucl_laliga_realmadrid3_lb.wav",
@@ -134,10 +116,7 @@
     "voiced_fraction": 0.774,
     "f1_median_hz": 893.0,
     "f2_median_hz": 1530.0,
-    "increase_centroid_hz": 909.3,
-    "increase_rolloff85_hz": 1044.4,
-    "increase_bandwidth_hz": 286.9,
-    "increase_flatness": 0.0
+    "hnr_db": -0.6
   },
   {
     "file": "ucl_laliga_realmadrid_lb.wav",
@@ -154,9 +133,6 @@
     "voiced_fraction": 0.899,
     "f1_median_hz": 898.9,
     "f2_median_hz": 1511.9,
-    "increase_centroid_hz": 1072.3,
-    "increase_rolloff85_hz": 1227.4,
-    "increase_bandwidth_hz": 646.6,
-    "increase_flatness": 0.0
+    "hnr_db": -0.84
   }
 ]
