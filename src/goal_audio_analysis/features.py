@@ -96,7 +96,7 @@ def _load_post_onset_window(path: Path, sr: int, spectral_window_s: float) -> np
 def spectrum_curve(
     path: str | Path,
     sr: int = 22050,
-    spectral_window_s: float = 3.0,
+    spectral_window_s: float = 2.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return `(freqs, spectrum)` -- one clip's raw post-onset average spectrum.
 
@@ -115,7 +115,7 @@ def spectrum_curve(
 def hnr_curve(
     path: str | Path,
     sr: int = 22050,
-    spectral_window_s: float = 3.0,
+    spectral_window_s: float = 2.0,
     time_step: float = 0.01,
 ) -> Optional[tuple[np.ndarray, np.ndarray]]:
     """Return `(times, hnr_db)` -- one clip's HNR over time, within the post-onset window.
@@ -149,7 +149,7 @@ def hnr_curve(
 def formant_envelope_curve(
     path: str | Path,
     sr: int = 22050,
-    spectral_window_s: float = 3.0,
+    spectral_window_s: float = 2.0,
     order: int = 10,
     max_formant_hz: float = 5500.0,
     frame_length_s: float = 0.025,
@@ -223,7 +223,7 @@ def _relative_window(y: np.ndarray, sr: int, anchor_time: float, start_s: float,
 def analyze_clip(
     path: str | Path,
     sr: int = 22050,
-    spectral_window_s: float = 3.0,
+    spectral_window_s: float = 2.0,
     zcr_window_s: float = 2.0,
     with_formants: bool = True,
 ) -> ClipFeatures:
