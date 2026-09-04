@@ -133,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--lead", type=float, default=3.0,
         help="seconds before `center` to start the clip (default 3.0) -- err generously here, "
              "since the goal moment itself is later specified exactly via "
-             "scripts/mark_goal_moment.py, not detected automatically",
+             "scripts/mark_onset_moment.py, not detected automatically",
     )
     p.add_argument(
         "--duration", type=float, default=9.0,
