@@ -1,11 +1,10 @@
 """Command-line interface.
 
-    goal-audio extract-clip <src.wav> <out.wav> <center_seconds>
     goal-audio analyze <clip1.wav> [clip2.wav ...] -o features.json
     goal-audio compare <features_a.json> <features_b.json> --label-a Premier --label-b LaLiga -o results/
 
-How to acquire the source audio file itself (`src.wav` above) is out of
-scope for this CLI — see the README.
+Preparing clips (acquiring and cutting the source audio) is out of scope
+for this CLI — see the README and scripts/.
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import extract, features, compare, plotting
+from . import features, compare, plotting
 
 DEFAULT_BAR_METRICS = [
     ("spectral_centroid_hz", "Spectral centroid (Hz)"),
@@ -24,11 +23,6 @@ DEFAULT_BAR_METRICS = [
     ("hnr_db", "HNR (dB)"),
     ("zero_crossing_rate_delta", "ZCR delta (post-pre)"),
 ]
-
-
-def cmd_extract_clip(args):
-    out = extract.extract_clip(args.src, args.out, center_s=args.center, lead_s=args.lead, duration_s=args.duration)
-    print(f"saved: {out}")
 
 
 def cmd_analyze(args):
@@ -124,22 +118,6 @@ def cmd_spectrum_plot(args):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="goal-audio")
     sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("extract-clip", help="cut a short clip from a source wav")
-    p.add_argument("src")
-    p.add_argument("out")
-    p.add_argument("center", type=float, help="timestamp (seconds) to center the clip on")
-    p.add_argument(
-        "--lead", type=float, default=3.0,
-        help="seconds before `center` to start the clip (default 3.0) -- err generously here, "
-             "since the goal moment itself is later specified exactly via "
-             "scripts/mark_onset_moment.py, not detected automatically",
-    )
-    p.add_argument(
-        "--duration", type=float, default=9.0,
-        help="total clip length in seconds (default 9.0)",
-    )
-    p.set_defaults(func=cmd_extract_clip)
 
     p = sub.add_parser("analyze", help="extract acoustic features from one or more clips")
     p.add_argument("clips", nargs="+")
