@@ -18,8 +18,6 @@ DEFAULT_METRICS = [
     "spectral_bandwidth_hz",
     "spectral_flatness",
     "zero_crossing_rate",
-    "zero_crossing_rate_pre",
-    "zero_crossing_rate_delta",
     "f0_median_hz",
     "f1_median_hz",
     "f2_median_hz",

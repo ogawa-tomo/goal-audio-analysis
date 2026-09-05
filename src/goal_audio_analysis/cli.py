@@ -24,7 +24,7 @@ DEFAULT_BAR_METRICS = [
     ("spectral_bandwidth_hz", "Bandwidth (Hz)"),
     ("f0_median_hz", "F0 median (Hz)"),
     ("hnr_db", "HNR (dB)"),
-    ("zero_crossing_rate_delta", "ZCR delta (post-pre)"),
+    ("zero_crossing_rate", "Zero crossing rate"),
 ]
 
 

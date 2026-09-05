@@ -28,8 +28,6 @@ class ClipFeatures:
     spectral_bandwidth_hz: float
     spectral_flatness: float
     zero_crossing_rate: float
-    zero_crossing_rate_pre: Optional[float]
-    zero_crossing_rate_delta: Optional[float]
     f0_median_hz: Optional[float]
     f0_mean_hz: Optional[float]
     voiced_fraction: float
@@ -207,24 +205,10 @@ def formant_envelope_curve(
     return freqs, np.mean(responses, axis=0)
 
 
-def _relative_window(y: np.ndarray, sr: int, anchor_time: float, start_s: float, end_s: float) -> Optional[np.ndarray]:
-    """Slice out `[anchor_time + start_s, anchor_time + end_s)`, clamped to not start before 0.
-
-    Used for the pre/post-goal baseline windows behind the
-    zero_crossing_rate before/after delta.
-    """
-    w_s = max(0.0, anchor_time + start_s)
-    w_e = max(0.0, anchor_time + end_s)
-    if w_e - w_s < 0.1:
-        return None
-    return y[int(w_s * sr):int(w_e * sr)]
-
-
 def analyze_clip(
     path: str | Path,
     sr: int = 22050,
     spectral_window_s: float = 2.0,
-    zcr_window_s: float = 2.0,
     with_formants: bool = True,
 ) -> ClipFeatures:
     """Extract acoustic features from one audio clip.
@@ -235,18 +219,18 @@ def analyze_clip(
     `_load_onset_mark` for why.
 
     Everything here describes the post-onset reaction's spectral
-    *character* on its own terms -- the plain spectral_*/f0/f1/f2/hnr_db
-    fields, all computed over `[onset, onset + spectral_window_s)` -- plus
-    zero_crossing_rate_pre/_delta, which additionally compare that window
-    against `zcr_window_s` seconds immediately before the onset. An
-    earlier design also compared the *whole* post-onset spectrum against a
-    pre-onset baseline (increase_centroid_hz etc., an "increase spectrum")
-    to isolate the reaction from preexisting ambient audio (commentary, an
-    already-ongoing chant) -- dropped once the question of interest
-    shifted from "what did the goal add" to "what does the post-goal
-    crowd sound like", at which point that preexisting audio stopped being
-    a confound to remove and became part of what's being described. See
-    `reports/premier_vs_laliga.md` 4.5 section for the fuller history.
+    *character* on its own terms, computed over `[onset,
+    onset + spectral_window_s)`. Earlier designs also compared this
+    window against a pre-onset baseline -- a "before/after" zero-crossing
+    delta, and separately an "increase spectrum" difference for the
+    spectral_* fields (increase_centroid_hz etc.) -- both meant to isolate
+    the reaction from preexisting ambient audio (commentary, an
+    already-ongoing chant). Both were dropped once the question of
+    interest shifted from "what did the goal add" to "what does the
+    post-goal crowd sound like", at which point that preexisting audio
+    stopped being a confound to remove and became part of what's being
+    described. See `reports/premier_vs_laliga.md` 4.5 section for the
+    fuller history.
     """
     path = Path(path)
 
@@ -278,13 +262,6 @@ def analyze_clip(
     f0_voiced = f0[~np.isnan(f0)]
 
     zcr_post_val = float(np.mean(zcr))
-    y_pre = _relative_window(y, sr, onset_time, -zcr_window_s, 0.0)
-    y_post_for_delta = _relative_window(y, sr, onset_time, 0.0, zcr_window_s)
-    if y_pre is not None and len(y_pre) > 0 and y_post_for_delta is not None and len(y_post_for_delta) > 0:
-        zcr_pre_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_pre)[0]))
-        zcr_delta_val = float(np.mean(librosa.feature.zero_crossing_rate(y=y_post_for_delta)[0])) - zcr_pre_val
-    else:
-        zcr_pre_val = zcr_delta_val = None
 
     f1_median = f2_median = hnr_median = None
     if with_formants:
@@ -299,8 +276,6 @@ def analyze_clip(
         spectral_bandwidth_hz=round(float(np.mean(bandwidth)), 1),
         spectral_flatness=round(float(np.mean(flatness)), 5),
         zero_crossing_rate=round(zcr_post_val, 5),
-        zero_crossing_rate_pre=round(zcr_pre_val, 5) if zcr_pre_val is not None else None,
-        zero_crossing_rate_delta=round(zcr_delta_val, 5) if zcr_delta_val is not None else None,
         f0_median_hz=round(float(np.median(f0_voiced)), 1) if len(f0_voiced) else None,
         f0_mean_hz=round(float(np.mean(f0_voiced)), 1) if len(f0_voiced) else None,
         voiced_fraction=round(float(np.mean(~np.isnan(f0))), 3),
