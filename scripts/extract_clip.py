@@ -16,7 +16,7 @@ README の「音声データの用意について」を参照(YouTube 等が原�
 
 `<center_seconds>` はゴール等、捉えたい瞬間のおおよそのタイムスタンプ
 (秒数)。解析の基準点(`onset_marked_time_s`)は後で
-`scripts/mark_onset_moment.py` で別途正確に指定するため、ここでの
+`goal-audio mark-onset` で別途正確に指定するため、ここでの
 タイムスタンプの精度は重要ではない -- クリップのどこかに目的の瞬間が
 収まっていればよい。
 

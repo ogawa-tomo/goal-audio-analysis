@@ -5,19 +5,20 @@
 - **`features.py`**: 1クリップの音声から音響特徴量(スペクトル重心・ロールオフ・帯域幅・
   平坦度・ゼロ交差率・F0・フォルマントF1/F2・HNR)を抽出する。基準点は
   サイドカーファイル(`<clip>.mark.json`)の`onset_marked_time_s`(歓声が盛り上がり始めた瞬間、
-  人間が確認。`scripts/mark_onset_moment.py`で指定)。マークされていないクリップは解析できない
+  人間が確認。`goal-audio mark-onset`で指定)。マークされていないクリップは解析できない
   (エラーになる)。以前は音量ピーク(`human_marked_time_s`)を基準にした立ち上がり時間・
   減衰時間も算出していたが、常に大きな音が続くクリップでは
   測定の前提自体が成立しないことが分かり、分析から除外した(`reports/premier_vs_laliga.md`
   4.2節・7章参照)。また、ゴール前後の差分をとる「増分スペクトル分析」も後に導入・除外した
   -- こちらは測定に問題があったのではなく、関心が「ゴールが何を変えたか」から「ゴール後の
   歓声そのものの質」に絞られ、差分をとる理由自体がなくなったため(同4.5節・7章参照)
-- **`onset.py`**: `scripts/mark_onset_moment.py`が使う、立ち上がり瞬間の候補検出ロジック
+- **`onset.py`**: `goal-audio mark-onset`が使う、立ち上がり瞬間の候補検出ロジック
   (前後1秒ずつのスペクトル形状変化=コサイン距離を計算し、局所的な極大点を候補として列挙する)
 - **`compare.py`**: 特徴量(dictのリスト)を2群受け取り、Welchのt検定で比較する。音声処理には
   依存しないので、音声以外の2群比較にも流用できる
 - **`plotting.py`**: 比較結果の棒グラフ・母音(F1-F2)図を生成する
-- **`cli.py`**: 上記をコマンドラインから呼び出せるようにするエントリポイント
+- **`cli.py`**: 上記をコマンドラインから呼び出せるようにするエントリポイント。`mark-onset`
+  (立ち上がりの瞬間を指定)・`analyze`・`compare`・`spectrum-plot`の4サブコマンドがある
 
 ## セットアップ
 
@@ -50,9 +51,8 @@ pip install -e .
     手動で合わせる想定(完全自動化はしていない)。使い方はスクリプト冒頭のdocstringを参照。
     事前に `pip install -r scripts/requirements.txt`(Windows側のPython環境に)が必要
   - **録音した内容の中で、実際にどこが目的のイベント(ゴール)の瞬間かは、人間が指定する**。
-    `onset_marked_time_s`(歓声が盛り上がり始めた瞬間)を
-    [`scripts/mark_onset_moment.py`](scripts/mark_onset_moment.py)で指定する。`python
-    scripts/mark_onset_moment.py <clip.wav>`とすると、スペクトル形状の変化量から立ち上がり
+    `onset_marked_time_s`(歓声が盛り上がり始めた瞬間)を`goal-audio mark-onset`で指定する。
+    `goal-audio mark-onset <clip.wav>`とすると、スペクトル形状の変化量から立ち上がり
     候補を検出して一覧表示するので、実際に聴いて確認したうえで`--pick <番号>`で選ぶと
     `onset_marked_time_s`がサイドカーファイル(`<clip>.mark.json`)に保存される(候補が
     どれも正しくない場合は`--time <秒数>`で自由に指定することもできる)。マークされていない
@@ -106,8 +106,8 @@ pip install -e .
 python scripts/extract_clip.py data/raw/source.wav data/clips/goal1.wav 74
 
 # 3. ゴールの立ち上がりの瞬間を指定する。候補を提示させ、聴いて確認してから選ぶ
-python scripts/mark_onset_moment.py data/clips/goal1.wav
-python scripts/mark_onset_moment.py data/clips/goal1.wav --pick 1
+goal-audio mark-onset data/clips/goal1.wav
+goal-audio mark-onset data/clips/goal1.wav --pick 1
 # (他のクリップも同様に、1つずつマークする)
 
 # 4. 特徴量抽出(複数クリップまとめて。マークしていないクリップはスキップされる)
@@ -148,7 +148,7 @@ print(compare.format_table(comparisons))
 
 ## 既知の注意点
 
-- 解析の基準点(`onset_marked_time_s`)は`scripts/mark_onset_moment.py`が提示する候補から
+- 解析の基準点(`onset_marked_time_s`)は`goal-audio mark-onset`が提示する候補から
   人間が選んだ時刻そのものであり、選んだ後にアルゴリズムによる自動補正は一切行わない。
   候補は聴いて確認してから選ぶこと(候補検出ロジックの詳細は`onset.py`のdocstring・
   `reports/premier_vs_laliga.md`4.2節を参照)

@@ -3,7 +3,7 @@
 Used to help a human mark `onset_marked_time_s` (see `features._load_onset_mark`):
 this module only *suggests* candidates -- the correct one is still a human
 judgment call, made by listening at each candidate timestamp. See
-`scripts/mark_onset_moment.py`.
+`goal-audio mark-onset` (see `cli.cmd_mark_onset`).
 
 Unlike the RMS-amplitude-based peak detection this project tried and dropped
 earlier (see `features.py`'s module history), this looks at how much the

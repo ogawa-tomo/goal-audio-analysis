@@ -1,19 +1,22 @@
 """Command-line interface.
 
+    goal-audio mark-onset <clip.wav> [--pick N | --time T]
     goal-audio analyze <clip1.wav> [clip2.wav ...] -o features.json
     goal-audio compare <features_a.json> <features_b.json> --label-a Premier --label-b LaLiga -o results/
 
-Preparing clips (acquiring and cutting the source audio) is out of scope
-for this CLI — see the README and scripts/.
+Acquiring and cutting the source audio (before it's a clip ready to be
+marked/analyzed) is out of scope for this CLI — see the README and
+scripts/.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
-from . import features, compare, plotting
+from . import features, compare, plotting, onset
 
 DEFAULT_BAR_METRICS = [
     ("spectral_centroid_hz", "Spectral centroid (Hz)"),
@@ -23,6 +26,73 @@ DEFAULT_BAR_METRICS = [
     ("hnr_db", "HNR (dB)"),
     ("zero_crossing_rate_delta", "ZCR delta (post-pre)"),
 ]
+
+
+def parse_time(value: str) -> float:
+    """Parse a time string as either plain seconds ("4.2") or "M:SS[.ms]" ("0:04.2")."""
+    value = value.strip()
+    if re.match(r"^\d+:\d+(\.\d+)?$", value):
+        minutes_str, seconds_str = value.split(":")
+        return int(minutes_str) * 60 + float(seconds_str)
+    return float(value)
+
+
+def cmd_mark_onset(args):
+    clip_path = Path(args.clip)
+    if not clip_path.exists():
+        print(f"error: file not found: {clip_path}", file=sys.stderr)
+        return 1
+
+    if args.pick is not None and args.time is not None:
+        print("error: --pick and --time can't both be given", file=sys.stderr)
+        return 1
+
+    mark_path = clip_path.with_suffix(".mark.json")
+    existing = {}
+    if mark_path.exists():
+        try:
+            existing = json.loads(mark_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            existing = {}
+
+    if args.time is not None:
+        try:
+            selected = round(parse_time(args.time), 3)
+        except ValueError:
+            print(f"error: could not parse time: {args.time!r} (expected seconds or M:SS)", file=sys.stderr)
+            return 1
+        existing["onset_marked_time_s"] = selected
+        mark_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"saved: {mark_path} (onset_marked_time_s={selected}, free-form)")
+        return 0
+
+    candidates = onset.onset_candidates_for_clip(
+        clip_path,
+        window_s=args.window,
+        height_ratio=args.height_ratio,
+        min_separation_s=args.min_separation,
+    )
+    if not candidates:
+        print(f"error: no candidates found for {clip_path.name}; try --time to specify manually", file=sys.stderr)
+        return 1
+
+    print(f"{clip_path.name}: {len(candidates)} candidate(s)")
+    for i, t in enumerate(candidates, start=1):
+        print(f"  [{i}] {t:.2f}s")
+
+    if args.pick is None:
+        print("\nlisten to each candidate, then pass --pick <number> (or --time <seconds>) to select one.")
+        return 0
+
+    if not (1 <= args.pick <= len(candidates)):
+        print(f"error: --pick must be between 1 and {len(candidates)}", file=sys.stderr)
+        return 1
+
+    selected = candidates[args.pick - 1]
+    existing["onset_marked_time_s"] = selected
+    mark_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"saved: {mark_path} (onset_marked_time_s={selected})")
+    return 0
 
 
 def cmd_analyze(args):
@@ -119,6 +189,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="goal-audio")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    p = sub.add_parser(
+        "mark-onset",
+        help="show onset-moment candidates for a clip, and mark the correct one",
+    )
+    p.add_argument("clip", help="path to the clip's WAV file")
+    p.add_argument("--pick", type=int, default=None, help="candidate number to select (1-based)")
+    p.add_argument("--time", type=str, default=None, help="if no candidate is correct, specify a time directly (seconds or M:SS)")
+    p.add_argument("--height-ratio", type=float, default=0.4, dest="height_ratio")
+    p.add_argument("--min-separation", type=float, default=1.5, dest="min_separation")
+    p.add_argument("--window", type=float, default=8.0, help="how many seconds from the clip's start to search for candidates")
+    p.set_defaults(func=cmd_mark_onset)
+
     p = sub.add_parser("analyze", help="extract acoustic features from one or more clips")
     p.add_argument("clips", nargs="+")
     p.add_argument("-o", "--out", help="write JSON here instead of stdout")
@@ -147,7 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-    args.func(args)
+    return args.func(args)
 
 
 if __name__ == "__main__":
