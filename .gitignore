@@ -3,7 +3,6 @@ data/raw/*
 data/clips/*
 !data/raw/.gitkeep
 !data/clips/.gitkeep
-!data/raw/SOURCES.md
 
 __pycache__/
 *.pyc
