@@ -1,4 +1,4 @@
-"""Command-line interface.
+"""Command-line interface -- orchestrates `clip/`, `groupstats.py`, and `compare.py`.
 
     goal-audio mark-onset <clip.wav> [--pick N | --time T]
     goal-audio analyze <clip1.wav> [clip2.wav ...] -o features.json
@@ -7,6 +7,10 @@
 Acquiring and cutting the source audio (before it's a clip ready to be
 marked/analyzed) is out of scope for this CLI — see the README and
 scripts/.
+
+This is the one place in the package that knows about file-path
+conventions (`<clip>.mark.json`, `<clip>.window.wav`): `clip/`'s modules
+only ever receive paths as arguments, never derive or assume them.
 """
 from __future__ import annotations
 
@@ -16,7 +20,11 @@ import re
 import sys
 from pathlib import Path
 
-from . import features, compare, plotting, onset
+from . import compare
+from .clip import mark, onset, window, spectral, formant, f0, zcr, hnr
+
+SR = 22050
+WINDOW_S = 2.0
 
 DEFAULT_BAR_METRICS = [
     ("spectral_centroid_hz", "Spectral centroid (Hz)"),
@@ -37,6 +45,52 @@ def parse_time(value: str) -> float:
     return float(value)
 
 
+def _mark_path(clip_path: Path) -> Path:
+    return clip_path.with_suffix(".mark.json")
+
+
+def _window_path(clip_path: Path) -> Path:
+    return clip_path.with_suffix(".window.wav")
+
+
+def _prepare_window(clip_path: Path) -> Path:
+    """Ensure `clip_path`'s onset is marked, then (re-)cut its analysis window.
+
+    Raises `mark.MissingMarkError` if the clip has no onset mark yet
+    (see `cmd_mark_onset`). The window file is always regenerated, so it
+    can never go stale relative to whatever onset was most recently
+    confirmed.
+    """
+    onset_time = mark.require(_mark_path(clip_path), "onset_marked_time_s")
+    return window.extract_window(clip_path, onset_time, WINDOW_S, _window_path(clip_path), sr=SR)
+
+
+def _analyze_one(clip_path: Path, with_formants: bool = True) -> dict:
+    onset_time = mark.require(_mark_path(clip_path), "onset_marked_time_s")
+    window_path = window.extract_window(clip_path, onset_time, WINDOW_S, _window_path(clip_path), sr=SR)
+
+    spectral_feat = spectral.analyze(window_path, sr=SR)
+    f0_feat = f0.analyze(window_path, sr=SR)
+    zcr_val = zcr.analyze(window_path, sr=SR)
+
+    f1_median = f2_median = hnr_val = None
+    if with_formants:
+        formant_feat = formant.analyze(window_path, sr=SR)
+        f1_median, f2_median = formant_feat.f1_median_hz, formant_feat.f2_median_hz
+        hnr_val = hnr.analyze(window_path, sr=SR)
+
+    return {
+        "file": clip_path.name,
+        "onset_time_s": round(onset_time, 2),
+        **spectral_feat.to_dict(),
+        "zero_crossing_rate": zcr_val,
+        **f0_feat.to_dict(),
+        "f1_median_hz": f1_median,
+        "f2_median_hz": f2_median,
+        "hnr_db": hnr_val,
+    }
+
+
 def cmd_mark_onset(args):
     clip_path = Path(args.clip)
     if not clip_path.exists():
@@ -47,13 +101,8 @@ def cmd_mark_onset(args):
         print("error: --pick and --time can't both be given", file=sys.stderr)
         return 1
 
-    mark_path = clip_path.with_suffix(".mark.json")
-    existing = {}
-    if mark_path.exists():
-        try:
-            existing = json.loads(mark_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            existing = {}
+    mark_path = _mark_path(clip_path)
+    existing = mark.load_mark(mark_path)
 
     if args.time is not None:
         try:
@@ -62,7 +111,7 @@ def cmd_mark_onset(args):
             print(f"error: could not parse time: {args.time!r} (expected seconds or M:SS)", file=sys.stderr)
             return 1
         existing["onset_marked_time_s"] = selected
-        mark_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+        mark.save_mark(mark_path, existing)
         print(f"saved: {mark_path} (onset_marked_time_s={selected}, free-form)")
         return 0
 
@@ -90,7 +139,7 @@ def cmd_mark_onset(args):
 
     selected = candidates[args.pick - 1]
     existing["onset_marked_time_s"] = selected
-    mark_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
+    mark.save_mark(mark_path, existing)
     print(f"saved: {mark_path} (onset_marked_time_s={selected})")
     return 0
 
@@ -100,8 +149,8 @@ def cmd_analyze(args):
     skipped = []
     for p in args.clips:
         try:
-            results.append(features.analyze_clip(p, with_formants=not args.no_formants).to_dict())
-        except features.MissingMarkError as e:
+            results.append(_analyze_one(Path(p), with_formants=not args.no_formants))
+        except mark.MissingMarkError as e:
             print(f"error: {e}", file=sys.stderr)
             skipped.append(p)
     if skipped:
@@ -124,13 +173,13 @@ def cmd_compare(args):
     if args.out_dir:
         out_dir = Path(args.out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        plotting.plot_bar_comparison(
+        compare.plot_bar_comparison(
             group_a, group_b, DEFAULT_BAR_METRICS,
             out_dir / "comparison.png", args.label_a, args.label_b,
             title=f"{args.label_a} vs {args.label_b}",
         )
         if any(it.get("f1_median_hz") is not None for it in group_a + group_b):
-            plotting.plot_formant_chart(
+            compare.plot_formant_chart(
                 group_a, group_b, out_dir / "formant_chart.png", args.label_a, args.label_b,
             )
         print(f"plots saved under: {out_dir}")
@@ -141,45 +190,53 @@ def cmd_spectrum_plot(args):
         curves = []
         skipped = []
         for p in paths:
+            clip_path = Path(p)
             try:
-                curve = curve_fn(p)
-            except features.MissingMarkError as e:
+                window_path = _prepare_window(clip_path)
+            except mark.MissingMarkError as e:
                 print(f"error: {e}", file=sys.stderr)
                 skipped.append(p)
                 continue
+            curve = curve_fn(window_path, sr=SR)
             if curve is not None:
                 curves.append(curve)
             else:
                 skipped.append(p)
         if skipped:
-            print(f"skipped {len(skipped)} clip(s) with no usable spectrum", file=sys.stderr)
+            print(f"skipped {len(skipped)} clip(s) with no usable curve", file=sys.stderr)
         return curves
 
     out_dir = Path(args.out_dir)
 
-    abs_a = load_curves(args.group_a, features.spectrum_curve)
-    abs_b = load_curves(args.group_b, features.spectrum_curve)
+    abs_a = load_curves(args.group_a, spectral.curve)
+    abs_b = load_curves(args.group_b, spectral.curve)
     abs_out = out_dir / "spectrum_absolute.png"
-    plotting.plot_spectrum_overlay(
+    compare.plot_curve_comparison(
         abs_a, abs_b, abs_out, args.label_a, args.label_b,
+        xlabel="Frequency (Hz)", ylabel="Normalized magnitude (shape, arbitrary units)",
+        x_max=6000.0, normalize=True,
         title=f"Spectrum shape (post-onset window): {args.label_a} vs {args.label_b}",
     )
     print(f"saved: {abs_out}")
 
-    fmt_a = load_curves(args.group_a, features.formant_envelope_curve)
-    fmt_b = load_curves(args.group_b, features.formant_envelope_curve)
+    fmt_a = load_curves(args.group_a, formant.curve)
+    fmt_b = load_curves(args.group_b, formant.curve)
     fmt_out = out_dir / "formant_envelope.png"
-    plotting.plot_formant_envelope_overlay(
+    compare.plot_curve_comparison(
         fmt_a, fmt_b, fmt_out, args.label_a, args.label_b,
+        xlabel="Frequency (Hz)", ylabel="Normalized LPC envelope (shape, arbitrary units)",
+        x_max=5500.0, normalize=True,
         title=f"Formant (LPC) envelope shape: {args.label_a} vs {args.label_b}",
     )
     print(f"saved: {fmt_out}")
 
-    hnr_a = load_curves(args.group_a, features.hnr_curve)
-    hnr_b = load_curves(args.group_b, features.hnr_curve)
+    hnr_a = load_curves(args.group_a, hnr.curve)
+    hnr_b = load_curves(args.group_b, hnr.curve)
     hnr_out = out_dir / "hnr_over_time.png"
-    plotting.plot_hnr_over_time_overlay(
+    compare.plot_curve_comparison(
         hnr_a, hnr_b, hnr_out, args.label_a, args.label_b,
+        xlabel="Time since onset (s)", ylabel="HNR (dB)",
+        x_max=None, normalize=False,
         title=f"HNR over time: {args.label_a} vs {args.label_b}",
     )
     print(f"saved: {hnr_out}")
