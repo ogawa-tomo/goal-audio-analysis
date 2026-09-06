@@ -2,23 +2,38 @@
 
 ゴール時の歓声など、群衆の音声データを解析するためのツール。
 
-- **`features.py`**: 1クリップの音声から音響特徴量(スペクトル重心・ロールオフ・帯域幅・
-  平坦度・ゼロ交差率・F0・フォルマントF1/F2・HNR)を抽出する。基準点は
-  サイドカーファイル(`<clip>.mark.json`)の`onset_marked_time_s`(歓声が盛り上がり始めた瞬間、
-  人間が確認。`goal-audio mark-onset`で指定)。マークされていないクリップは解析できない
-  (エラーになる)。以前は音量ピーク(`human_marked_time_s`)を基準にした立ち上がり時間・
-  減衰時間も算出していたが、常に大きな音が続くクリップでは
-  測定の前提自体が成立しないことが分かり、分析から除外した(`reports/premier_vs_laliga.md`
-  4.2節・7章参照)。また、ゴール前後の差分をとる「増分スペクトル分析」も後に導入・除外した
-  -- こちらは測定に問題があったのではなく、関心が「ゴールが何を変えたか」から「ゴール後の
-  歓声そのものの質」に絞られ、差分をとる理由自体がなくなったため(同4.5節・7章参照)
-- **`onset.py`**: `goal-audio mark-onset`が使う、立ち上がり瞬間の候補検出ロジック
-  (前後1秒ずつのスペクトル形状変化=コサイン距離を計算し、局所的な極大点を候補として列挙する)
-- **`compare.py`**: 特徴量(dictのリスト)を2群受け取り、Welchのt検定で比較する。音声処理には
-  依存しないので、音声以外の2群比較にも流用できる
-- **`plotting.py`**: 比較結果の棒グラフ・母音(F1-F2)図を生成する
-- **`cli.py`**: 上記をコマンドラインから呼び出せるようにするエントリポイント。`mark-onset`
+ライブラリは4つの層に分かれている。①1クリップの分析(`clip/`) → ②1グループの集計
+(`groupstats.py`) → ③2グループの比較(`compare.py`) → ④それらを呼び出す一連の処理
+(`cli.py`)。「1ゴールだけ」「1手法だけ」「1グループだけ」を分析したい場合も、①②の各関数を
+単体で呼び出せる。
+
+- **`clip/`**: 1クリップについての分析。各モジュールは音声データ(またはそのパス)を引数で
+  受け取るだけで、ファイルの置き場所やサイドカーファイルの形式を一切知らない
+  - **`onset.py`**: 立ち上がり瞬間の候補検出ロジック(前後1秒ずつのスペクトル形状変化=
+    コサイン距離を計算し、局所的な極大点を候補として列挙する)。`goal-audio mark-onset`が使う
+  - **`mark.py`**: `<clip>.mark.json`の読み書き(`onset_marked_time_s`等)。キー名には
+    関知しない汎用的なJSON読み書きで、どのパスを使うかは`cli.py`側が決める
+  - **`window.py`**: 元クリップ+立ち上がり時刻から、解析窓だけを切り出した音声ファイルを
+    生成する(`extract_window`)。`analyze`実行のたびに毎回作り直すため、再マークしても
+    古いままになる心配がない。人間が窓の中身だけを聴いて確認できるという利点もある
+  - **`spectral.py`・`formant.py`・`f0.py`・`zcr.py`・`hnr.py`**: 窓の音声ファイルだけを
+    入力とする分析(スペクトル重心・ロールオフ・帯域幅・平坦度/フォルマントF1・F2/基本周波数/
+    ゼロ交差率/HNR)。`spectral.py`・`formant.py`・`hnr.py`は数値の他に、周波数(または時間)
+    分布そのもの(`curve`)も返せる
+- **`groupstats.py`**: 複数クリップ分の①の結果を、1グループとして集計する(数値ならmean/SD/n、
+  カーブなら群平均)。どの手法の結果かは関知しない
+- **`compare.py`**: ②の集計結果(必要なら①の生データも)を2グループ分受け取り、Welchの
+  t検定・棒グラフ・母音(F1-F2)図・カーブの重ね描きグラフを生成する。2群比較を前提とした設計で、
+  音声処理そのものには依存しない
+- **`cli.py`**: 上記をコマンドラインから呼び出せるようにするエントリポイント。ファイルの
+  置き場所(`<clip>.mark.json`・`<clip>.window.wav`等)を知っているのはここだけ。`mark-onset`
   (立ち上がりの瞬間を指定)・`analyze`・`compare`・`spectrum-plot`の4サブコマンドがある
+
+以前は音量ピーク(`human_marked_time_s`)を基準にした立ち上がり時間・減衰時間も算出していたが、
+常に大きな音が続くクリップでは測定の前提自体が成立しないことが分かり、分析から除外した。また、
+ゴール前後の差分をとる「増分スペクトル分析」も後に導入・除外した -- こちらは測定に問題が
+あったのではなく、関心が「ゴールが何を変えたか」から「ゴール後の歓声そのものの質」に絞られ、
+差分をとる理由自体がなくなったため。マークされていないクリップは解析できない(エラーになる)。
 
 ## セットアップ
 
@@ -119,17 +134,27 @@ goal-audio compare results/premier_features.json results/laliga_features.json \
   --label-a Premier --label-b LaLiga -o results/
 ```
 
-Pythonから直接呼ぶ場合:
+Pythonから直接、①(1クリップ)・②(1グループ)・③(2グループ比較)を個別に呼ぶ場合:
 
 ```python
-from goal_audio_analysis import features, compare, plotting
+from pathlib import Path
+from goal_audio_analysis import groupstats, compare
+from goal_audio_analysis.clip import mark, window, spectral
 
-f = features.analyze_clip("data/clips/goal1.wav")
+# ① 1クリップだけを分析する例(スペクトル重心のみ)
+clip_path = Path("data/clips/goal1.wav")
+onset_time = mark.require(clip_path.with_suffix(".mark.json"), "onset_marked_time_s")
+window_path = window.extract_window(clip_path, onset_time, window_s=2.0,
+                                     out_path=clip_path.with_suffix(".window.wav"))
+centroid = spectral.analyze(window_path).spectral_centroid_hz
 
-group_a = [features.analyze_clip(p).to_dict() for p in premier_clips]
-group_b = [features.analyze_clip(p).to_dict() for p in laliga_clips]
-comparisons = compare.compare_groups(group_a, group_b, label_a="Premier", label_b="LaLiga")
-print(compare.format_table(comparisons))
+# ② 1グループだけを集計する例
+centroids_premier = [...]  # 上記を複数クリップ分集めたもの
+summary = groupstats.aggregate_scalar(centroids_premier)  # mean/std/n
+
+# ③ 2グループを比較する例
+comparison = compare.compare_scalar(centroids_premier, centroids_laliga, metric="spectral_centroid_hz")
+print(compare.format_table([comparison], label_a="Premier", label_b="LaLiga"))
 ```
 
 ## ディレクトリ構成
@@ -150,7 +175,7 @@ print(compare.format_table(comparisons))
 
 - 解析の基準点(`onset_marked_time_s`)は`goal-audio mark-onset`が提示する候補から
   人間が選んだ時刻そのものであり、選んだ後にアルゴリズムによる自動補正は一切行わない。
-  候補は聴いて確認してから選ぶこと(候補検出ロジックの詳細は`onset.py`のdocstring・
+  候補は聴いて確認してから選ぶこと(候補検出ロジックの詳細は`clip/onset.py`のdocstring・
   `reports/premier_vs_laliga.md`4.2節を参照)
 - `loopback_record.py`は、録音バッファの取りこぼし(`soundcard`の"data discontinuity"警告)を
   検知して回数を表示する。警告が出た場合はクリップを目視確認(スペクトログラム等)するか、
